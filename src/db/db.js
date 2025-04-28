@@ -23,7 +23,7 @@ const modelKitCotizacion = require('./model/kitCotizacion');
 
 const entorno = true;  
 
-let dburl = entorno ? 'postgresql://postgres:BvLYXdnchaIYQVCfgLWlUZOcHUtKzrcl@centerbeam.proxy.rlwy.net:47572/railway' : 'postgres:postgres:123@localhost:5432/u';
+let dburl = entorno ? 'postgresql://postgres:mnfPuhNtcXTFhlurmBdslUBftGBFMZau@centerbeam.proxy.rlwy.net:41058/railway' : 'postgres:postgres:123@localhost:5432/u';
  
 const sequelize = new Sequelize(dburl, {
     logging: false,
