@@ -97,7 +97,7 @@ const getAllMateria = async(req, res) => {
 const addMateria = async(req, res) => {
     try{
         // Recibimos datos por body
-        const { item, description, unidad, medida, peso, volumen, procedencia, criticidad, lineaId, categoriumId } = req.body;
+        const { item, description, unidad, medida, peso, volumen, procedencia, criticidad, lineaId, categoriumId, calibre } = req.body;
 
         // Validamos que los datos entren correctamente
         if(!item || !description || !medida || !lineaId || !categoriumId) return res.status(501).json({msg: 'Los parámetros no son validos.'});
@@ -126,11 +126,12 @@ const addMateria = async(req, res) => {
             procedencia,
             criticidad,
             lineaId,
-            categoriumId
+            categoriumId,
+            calibre
         }).catch(err => {
             console.log(err);
             return null
-        });
+        }); 
         
         // Validamos la respuesta
         if(!createItem) return res.status(502).json({msg: 'No hemos logrado crer este item, intentalo más tarde'});
@@ -148,7 +149,7 @@ const addMateria = async(req, res) => {
 const updateMateria = async(req, res) => {
     try{
         // Recibimos datos por body
-        const { itemId, item, description, medida, peso, volumen, procedencia, criticidad, lineaId, categoriaId } = req.body;
+        const { itemId, item, description, medida, peso, volumen, procedencia, criticidad, lineaId, categoriaId, calibre } = req.body;
 
         // Validamos que los datos entren correctamente
         if(!itemId) return res.status(501).json({msg: 'Parámetro invalido.'});
@@ -172,7 +173,8 @@ const updateMateria = async(req, res) => {
             procedencia,
             criticidad,
             lineaId,
-            categoriumId: categoriaId
+            categoriumId: categoriaId,
+            calibre
         }, {
             where: {
                 id: itemId
