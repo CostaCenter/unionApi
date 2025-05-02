@@ -20,7 +20,10 @@ const modelClient = require('./model/client'); // Cliente
 const modelCotizacion = require('./model/cotizacion'); // Cotización
 const modelKitCotizacion = require('./model/kitCotizacion');
 
-
+// PARTE COMPRAS ALMACEN
+const modelInventario = require('./model/inventario'); // Inventario
+const modelUbicacion = require('./model/ubicacion'); // Ubicación.
+const modelMovimientoInventario = require('./model/movimientosInventario'); // Movimiento en inventario
 const entorno = true;  
 
 let dburl = entorno ? 'postgresql://postgres:mnfPuhNtcXTFhlurmBdslUBftGBFMZau@centerbeam.proxy.rlwy.net:41058/railway' : 'postgres:postgres:123@localhost:5432/u';
@@ -54,8 +57,14 @@ modelClient(sequelize);
 modelCotizacion(sequelize);
 modelKitCotizacion(sequelize);
 
+
+// COMPRAS E INVENTARIO
+// modelInventario(sequelize);
+// modelUbicacion(sequelize);
+// modelMovimientoInventario(sequelize); 
+
 const { user, proveedor, linea, categoria, materia, extension, price, kit, itemKit,
-  client, cotizacion, kitCotizacion
+  client, cotizacion, kitCotizacion,
  } = sequelize.models;
 
 
@@ -103,14 +112,12 @@ linea.hasMany(kit, {
   foreignKey: 'lineaId', // Clave foránea en la tabla contact
   onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
 });
-
 kit.belongsTo(linea);
 
 // Relación uno a muchos
 categoria.hasMany(kit, {
   onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
 });  
-
 kit.belongsTo(categoria); 
 
 // Relación uno a muchos
@@ -141,7 +148,6 @@ client.hasMany(cotizacion, {
   foreignKey: 'clientId', // Clave foránea en la tabla contact
   onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
 });
-
 cotizacion.belongsTo(client); 
 
 // Relación Muchos a muchos
@@ -149,16 +155,45 @@ cotizacion.belongsToMany(kit, {
   through: kitCotizacion, // Nombre de la tabla intermedia
   foreignKey: 'cotizacionId' 
 });
-
 kit.belongsToMany(cotizacion, { 
   through: kitCotizacion, 
   foreignKey: 'kitId' 
 });
   
+// ---------------------------
+// INVENTARIO Y COMPRAS 
+// ---------------------------
+// ubicacion.hasMany(inventario, {
+//   foreignKey: 'ubicacionId', // Clave foránea en la tabla inventario
+//   onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
+// })
+// inventario.belongsTo(ubicacion); 
+
+// materia.hasMany(inventario, {
+//   foreignKey: 'materiumId',
+//   onDelete: 'CASCADE'
+// })
+// inventario.belongsTo(materia)
+
+// // ENLAZO LOS MOVIMIENTOS
+// materia.hasMany(movimientoInventario, {
+//   foreignKey: 'materiumId',
+//   onDelete: 'CASCADE'
+// });
+// movimientoInventario.belongsTo(materia);
+
+// ubicacion.hasMany(movimientoInventario, {
+//   foreignKey: 'ubicacionOrigenId',
+//   as: 'origen'
+// })
+// ubicacion.hasMany(movimientoInventario, {
+//   foreignKey: 'ubicacionDestinoId',
+//   as: 'destino'
+// }) 
 
 
 // Exportamos.
-module.exports = { 
+module.exports = {  
     ...sequelize.models,
     db: sequelize,
     Op

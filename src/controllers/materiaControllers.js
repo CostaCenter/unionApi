@@ -50,6 +50,10 @@ const getItem = async (req, res) => {
                     attributes:['id', 'type', 'nit', 'nombre']
                 }],
                 required:false
+            }, {
+                model: categoria
+            }, {
+                model: linea
             }]
         }).catch(err => {
             console.log(err);
@@ -149,7 +153,7 @@ const addMateria = async(req, res) => {
 const updateMateria = async(req, res) => {
     try{
         // Recibimos datos por body
-        const { itemId, item, description, medida, peso, volumen, procedencia, criticidad, lineaId, categoriaId, calibre } = req.body;
+        const { itemId, item, description, medida, unidad, peso, volumen, procedencia, criticidad, lineaId, categoriaId, calibre } = req.body;
 
         // Validamos que los datos entren correctamente
         if(!itemId) return res.status(501).json({msg: 'Parámetro invalido.'});
@@ -168,6 +172,7 @@ const updateMateria = async(req, res) => {
             item,
             description,
             medida,
+            unidad,
             peso,
             volumen,
             procedencia,
