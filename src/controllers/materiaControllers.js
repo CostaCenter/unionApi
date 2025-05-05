@@ -82,11 +82,11 @@ const getAllMateria = async(req, res) => {
                 },
                 required:false
             }],
-            order:[['createdAt', 'DESC']]
+            order:[['description', 'ASC']]
         })
         .catch(err => {
             console.log(err);
-            return null;
+            return null; 
         });
         // Validamos que existan regsitros.
         if(!searchAllMateria || !searchAllMateria.length) return res.status(404).json({msg: 'No hay registros para mostrar'});

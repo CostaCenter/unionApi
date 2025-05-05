@@ -29,7 +29,7 @@ const getAllInventario = async (req, res) =>{
 // Obtener inventario item especifico
 const getAllInventarioId = async(req, res) => {
     try{
-        // Recibimos el item ID
+        // Recibimos el item ID y la ubicación. // Bodega, Proceso, Terminado...
         const { itemId, ubicacion } = req.params;
         if(!itemId || !ubicacion) return res.status(501).json({msg: 'No hemos encontrado esto.'});
         
@@ -57,4 +57,4 @@ const getAllInventarioId = async(req, res) => {
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
-}
+} 

@@ -1,6 +1,5 @@
 const express = require('express');
-const { materia, proveedor, extension, price, kit, itemKit, linea, categoria } = require('../db/db');
-const { Op } = require('sequelize');
+const { materia, proveedor, extension, price, kit, itemKit, linea, categoria, db} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 
@@ -155,6 +154,37 @@ const addKit = async (req, res) => {
         return res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
+// Update Basic information about Kit
+const updateKitt = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { kitId, nombre, description, extensionId, lineaId, categoriumId } = req.body;
+
+        // Validamos
+        if(!kitId) return res.status(501).json({msg: 'Parametro invalido.'});
+        // Caso contrario, avanzamos
+        const updateKit = await kit.update({
+            name: nombre,
+            description,
+            extensionId: extensionId,
+            lineaId: lineaId,
+            categoriumId: categoriumId
+        }, {
+            where: {
+                id: kitId
+            }
+        }).catch(err => {
+            console.log(err);
+            return 502;
+        });
+        if(!updateKit) return res.status(502).json({msg: 'No hemos logrado actualizar esto.'});
+        // Caso contrario
+        res.status(200).json({msg: 'Actualizado con éxito'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
 
 // Agregamos item al Kit
 const addItem = async (req, res) => {
@@ -188,7 +218,78 @@ const addItem = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
+// Clonar KIT
+const clonarKit = async (req, res) => {
+    try{
+        // Recibimos parametro por params
+        const { kitId } = req.params;
+        if(!kitId) return res.status(501).json({msg: 'Invado el parámetro'})
+        // Definimos la transacción
+        const transaction = await db.transaction();
 
+        const kitOriginal = await kit.findByPk(kitId, {
+            include: [{ model: materia }]
+        }).catch(err => {
+            console.log(err);
+            return null; 
+        });
+
+        // Validamos la existencia
+        if(!kitOriginal) return res.status(404).json({msg: 'No hemos encontrado este kit'});
+        // Caso contrario, avanzamos...
+
+        const nuevoKit = await kit.create({
+            name: kitOriginal.name,
+            description: kitOriginal.description,
+            lineaId: kitOriginal.lineaId,
+            categoriumdId: kitOriginal.categoriumdId,
+            extensionId: kitOriginal.extensionId,
+            state: kitOriginal.state
+
+        }).catch(err => {
+            console.log(err);
+            return null;
+        });
+
+        if(!nuevoKit) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+
+        // Listamos la materia
+        const nuevaMateria = kitOriginal.materia.map((mp) => ({
+            cantidad: String(mp.itemKit.cantidad),
+            medida: String(mp.itemKit.medida),
+            materiaId: mp.itemKit.materiaId, 
+            calibre: mp.calibre ? mp.itemKit.calibre : null,
+            kitId: nuevoKit.id
+        }));
+        // Caso contrario
+        // Caso contrario, avanzamos
+        if(nuevaMateria.length){
+            await itemKit.bulkCreate(nuevaMateria)
+            .then((res) =>  {
+                console.log('Crea el bulk')
+                console.log(res)
+                return true
+            })
+            .catch(err => {
+                console.log('Fallo el bulk');
+                console.log(err);
+                return null;
+            });
+            
+            return res.status(201).json({msg: 'Kit clonado con éxito!'});
+        }
+        console.log('Materia prima:')
+        console.log(nuevaMateria);
+        res.status(200).json({msg: 'Para directo'});
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+
+// Eliminar elemento del Kit
 const deleteItemOnKit = async(req, res) => {
     try{
         // Recibo dos varaibles por body
@@ -229,9 +330,38 @@ const changeStateToKit = async(req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'})
     }
 }
+// Eliminar Kit
+const deleteKit = async(req, res) => {
+    try{
+        const { kitId } = req.params;
+
+        if(!kitId) return res.status(501).json({msg: 'El parámetro no es valido.'});
+        // Caso contrario, avanzamos
+
+        const kitAEliminar = await kit.findByPk(kitId).catch(err => null);
+        // Validamos
+        if(!kitAEliminar) return res.status(404).json({msg: 'No hemos encontrado este kit.'});
+        
+        const sendRemove = await kitAEliminar.destroy().catch(err => {
+            console.log(err);
+            return null;
+        });
+
+        if(!sendRemove) return res.state(502).json({msg: 'No hemos logrado eliminar esto'});
+        // Caso contrario, avanzamos
+        res.status(200).json({msg: 'Eliminado con éxito'});
+
+    }catch(err){    
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
 module.exports = { 
     addKit, // Agregamos KIT.
     addItem, // Agregar Item
+    updateKitt, // Actualizar kit
+    clonarKit, // Clonar Kit
+    deleteKit, // Eliminar Kit
     getKit, // Obtenemos el KIT
     deleteItemOnKit, // Eliminar item del kit
     getAllKit, // Obtenemos todos los kits
