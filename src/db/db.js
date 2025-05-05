@@ -24,7 +24,7 @@ const modelKitCotizacion = require('./model/kitCotizacion');
 const modelInventario = require('./model/inventario'); // Inventario
 const modelUbicacion = require('./model/ubicacion'); // Ubicación.
 const modelMovimientoInventario = require('./model/movimientosInventario'); // Movimiento en inventario
-const entorno = false;  
+const entorno = true;   
 
 let dburl = entorno ? 'postgresql://postgres:mnfPuhNtcXTFhlurmBdslUBftGBFMZau@centerbeam.proxy.rlwy.net:41058/railway' : 'postgres:postgres:123@localhost:5432/u';
  
