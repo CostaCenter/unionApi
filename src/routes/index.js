@@ -13,7 +13,7 @@ const priceRoutes = require('./price'); // Materia prima
 const kitRoutes = require('./kit'); // Materia prima
 const clientRoutes = require('./client'); // Clientes
 const cotizacionRoutes = require('./cotizacion'); // Cotización
- 
+const requisicionroutes = require('./requisicion'); // Requisiciones
 
 
  
@@ -29,7 +29,7 @@ router.use('/mt/price', priceRoutes);
 router.use('/kit', kitRoutes);
 router.use('/client', clientRoutes);
 router.use('/cotizacion', cotizacionRoutes);
-
+router.use('/requisicion', requisicionroutes);
  
 
  

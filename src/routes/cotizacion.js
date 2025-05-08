@@ -1,5 +1,5 @@
 const express = require('express');
-const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery } = require('../controllers/cotizacion');
+const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion } = require('../controllers/cotizacion');
 
 const router = express.Router();
 
@@ -20,4 +20,7 @@ router.route('/add/item')
 router.route('/remove/item')
     .delete(deleteKitOnCotizacion)
 
+// Aceptar cotización
+router.route('/accept/:cotiId')
+    .get(acceptCotizacion)
 module.exports = router; 

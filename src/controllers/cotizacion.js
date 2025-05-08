@@ -2,6 +2,8 @@ const express = require('express');
 const { client, kit, materia, cotizacion, kitCotizacion } = require('../db/db');
 const { Op } = require('sequelize');
 const { createCotizacion, addItemToCotizacionServices } = require('./services/cotizacionServices');
+const { createRequisicion } = require('./services/requsicionService');
+const dayjs = require('dayjs');
 
 // Buscar cliente para cotizacion
 const searchClientQuery = async(req, res) => {
@@ -204,6 +206,51 @@ const deleteKitOnCotizacion = async (req, res) => {
     }
 }
 
+// Aprobadar cotizaciónn
+const acceptCotizacion = async (req, res) => {
+    try{
+        // Recibimos la cotización por params
+        const { cotiId } = req.params;
+        // Validamos
+        if(!cotiId) return res.status(501).json({msg: 'El parámetro no es valido.'});
+        // Caso contrario, avanzamos
+
+        const searchCoti = await cotizacion.findByPk(cotiId).catch(err => null);
+        // Validamos
+        if(!searchCoti) return res.status(404).json({msg: 'No hemos encontrado esta cotización'});
+        
+        // Caso contrario, avanzamos
+        const updateCoti = await cotizacion.update({
+            state: 'aprobada'
+        }, {
+            where: {
+                id: cotiId
+            }
+        })
+        .then(async (res) => {
+            // Obtenemos la hora actual
+            const fechaActual = dayjs().format('YYYY-MM-DD');
+            const fechaMaxima = dayjs().add(3, 'day').format('YYYY-MM-DD');
+            // Creamos la requisición
+            const newRequsicion = await createRequisicion(searchCoti.name, fechaActual, fechaMaxima, cotiId);
+
+            return newRequsicion;
+        })
+        .catch(err => {
+            console.log(err);
+            return null;
+        });
+        console.log(updateCoti);
+        if(updateCoti == 501) return res.status(501).json({msg: 'Parametros no son validos.'});
+        if(updateCoti == 502) return res.status(502).json({msg: 'No hemos logrado generar requsición'})
+        res.status(201).json({msg: 'Requisición enviada'})
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
 
 module.exports = { 
     getCotizacion, // Obtenemos una cotización por su Id
@@ -213,4 +260,5 @@ module.exports = {
     deleteKitOnCotizacion, // Eliminar Kit de una cotización
     getAllCotizaciones, // Obtener todas las cotizaciones
     searchClientQuery, // QUERY
+    acceptCotizacion, // Aceptar cotización
 }  

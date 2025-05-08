@@ -24,14 +24,30 @@ const modelKitCotizacion = require('./model/kitCotizacion');
 const modelInventario = require('./model/inventario'); // Inventario
 const modelUbicacion = require('./model/ubicacion'); // Ubicación.
 const modelMovimientoInventario = require('./model/movimientosInventario'); // Movimiento en inventario
-const entorno = true;   
 
+const modelRequisicion = require('./model/requisicion');
+
+
+const entorno = true;    
 let dburl = entorno ? 'postgresql://postgres:mnfPuhNtcXTFhlurmBdslUBftGBFMZau@centerbeam.proxy.rlwy.net:41058/railway' : 'postgres:postgres:123@localhost:5432/u';
  
 const sequelize = new Sequelize(dburl, {
     logging: false,
     native: false,
-});
+    dialect: 'postgres',
+    dialectOptions: {
+      ssl: {
+        require: true,
+        rejectUnauthorized: false
+      }
+    },
+    pool: {
+      max: 5,
+      min: 0,
+      acquire: 30000, 
+      idle: 10000
+    }
+  });
   
  
     
@@ -58,14 +74,16 @@ modelCotizacion(sequelize);
 modelKitCotizacion(sequelize);
 
 
+
 // COMPRAS E INVENTARIO
 // modelInventario(sequelize);
 // modelUbicacion(sequelize);
 // modelMovimientoInventario(sequelize); 
 
+modelRequisicion(sequelize);
 const { user, proveedor, linea, categoria, materia, extension, price, kit, itemKit,
-  client, cotizacion, kitCotizacion,
- } = sequelize.models;
+  client, cotizacion, kitCotizacion, requisicion
+ } = sequelize.models; 
 
 
 // RELACIONES 
@@ -160,6 +178,13 @@ kit.belongsToMany(cotizacion, {
   foreignKey: 'kitId' 
 });
   
+
+cotizacion.hasMany(requisicion, {
+  as: 'requisiciones',
+});
+
+requisicion.belongsTo(cotizacion);
+
 // ---------------------------
 // INVENTARIO Y COMPRAS 
 // ---------------------------
