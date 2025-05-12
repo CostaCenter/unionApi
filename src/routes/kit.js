@@ -1,11 +1,14 @@
 const express = require('express');
-const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt } = require('../controllers/kitController');
+const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits } = require('../controllers/kitController');
 
 const router = express.Router();
 
 router.route('/getAllComplete')
     .get(getAllKitCompleted)
-    
+
+router.route('/getAll/general')
+    .get(getKits)
+
 router.route('/getAll')
     .get(getAllKit);
 

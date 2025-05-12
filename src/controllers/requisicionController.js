@@ -1,5 +1,5 @@
 const express = require('express');
-const { materia, cotizacion,  proveedor, extension, price, kit, itemKit, linea, categoria, requisicion, db} = require('../db/db');
+const { materia, cotizacion,  proveedor, extension, price, kit, itemKit, linea, categoria, requisicion, db, Op} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 
@@ -108,8 +108,88 @@ const getRequisicion = async (req, res) => {
     }
 }
 
+const getMultipleReq = async (req, res) => {
+    try{
+        // Recibimos IDs por Body
+        const { ids } = req.body;
+        if(!ids) return res.status(501).json({msg: 'Parámetro invalido'});
+        
+        const multiReq = await requisicion.findAll({
+            where: {
+                id: {
+                    [Op.in]: ids
+                }
+            },
+            include: [{
+                model: cotizacion,
+                include:[{
+                    model: kit,
+                    include: [{
+                        model: materia,
+                    }],
+                    through: {
+                        attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
+                    }
+                }],
+            }]
+        }).catch(err => {
+            console.log(err);
+            return null;
+        });
+        if(!multiReq) return res.status(404).json({msg: 'No hemos encontrado estos resultados.'}); 
+        
+        
+        
+        const totalMateriaPrima  = {};
+        const totalRequsiciones = {};
+        multiReq.forEach(rr => {
+            const llave = `${rr.id}`
+            totalRequsiciones[llave] = {
+                id: rr.id,
+                nombre: rr.nombre
+            }
+
+            rr.cotizacion.kits.forEach(kit => {
+                const cantidadKit = kit.kitCotizacion.cantidad;
+    
+                kit.materia.forEach(mt => {
+                    const key = `${mt.id}`
+                    const cantidadTotal = Number(mt.itemKit.medida) * Number(cantidadKit);
+                    
+                    if (!totalMateriaPrima[key]) {
+                        totalMateriaPrima[key] = {
+                            id: mt.id,
+                            nombre: mt.description,
+                            medidaOriginal: mt.medida,
+                            unidad: mt.unidad,
+                            cantidad: 0 
+                        };
+                    }
+    
+                    totalMateriaPrima[key].cantidad += cantidadTotal;
+                })
+    
+            })
+        })
+        
+ 
+        Object.values(totalMateriaPrima);
+
+        res.status(200).json({
+            requisicion: Object.values(totalRequsiciones),
+            cantidades: Object.values(totalMateriaPrima)
+        });  
+        
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
 
 module.exports = { 
     getAllRequisiciones, // Obtener todas las requsiciones
-    getRequisicion, // Obtener una requisición
+    getRequisicion, // Obtener una requisición 
+    getMultipleReq, // Multiples requisiciones
 }

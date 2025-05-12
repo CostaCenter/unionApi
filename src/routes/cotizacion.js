@@ -23,4 +23,6 @@ router.route('/remove/item')
 // Aceptar cotización
 router.route('/accept/:cotiId')
     .get(acceptCotizacion)
+
+    
 module.exports = router; 

@@ -45,28 +45,53 @@ const getAllKitCompleted = async(req, res) => {
     }
 }
 
-// Obtener todos los kikts
-const getAllKit = async(req, res) => {
+// Obtener kits sin precio
+const getKits = async(req, res) => {
     try{
         // Buscamos todos los elementos dentro de la base de datos
         const searchAll = await kit.findAll({
-            include:[{
-                model:materia,
-                attributes:['id', 'item', 'description', 'medida', 'unidad'],
-                include:[{
-                    model: price,
-                    where: {
-                        state: 'active'
-                    },
-                    attributes: ['id', 'valor', 'iva', 'descuentos', 'state']
-                }]
-            },{ 
-                model: categoria
+            include:[{  
+                model: categoria,
+                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code'] }
             },
             {
-                model: linea
+                model: linea,
+                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code'] }
             },{
-                model: extension
+                model: extension,
+                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type'] }
+            }], 
+            order:[['createdAt', 'DESC']]
+        }).catch(err => {
+            console.log(err)
+            return null
+        });
+
+        if(!searchAll) return res.status(404).json({msg: 'No hemos encontrado esto'});
+
+        // caso contrario, enviamos resultados
+        res.status(200).json(searchAll)
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
+    }
+}
+// Obtener todos los kikts
+const getAllKit = async(req, res) => {
+    try{
+        // Buscamos todos los elementos dentro de la base de datos 
+        const searchAll = await kit.findAll({
+            include:[{ 
+                model: categoria,
+                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
+            },
+            {
+                model: linea,
+                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
+            },{ 
+                model: extension,
+                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'state'] }
+
             }] ,
             order:[['createdAt', 'DESC']]
         }).catch(err => {
@@ -105,6 +130,17 @@ const getKit = async(req, res) => {
                     },
                     attributes: ['id', 'valor', 'iva', 'descuentos', 'state']
                 }]
+            },{ 
+                model: categoria,
+                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
+            },
+            {
+                model: linea,
+                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
+            },{ 
+                model: extension,
+                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'state'] }
+
             }]
         }).catch(err => {
             console.log(err);
@@ -364,7 +400,8 @@ module.exports = {
     deleteKit, // Eliminar Kit
     getKit, // Obtenemos el KIT
     deleteItemOnKit, // Eliminar item del kit
-    getAllKit, // Obtenemos todos los kits
+    getAllKit, // Obtenemos todos los kits 
+    getKits, // Obtenemos los kits sin precios
     changeStateToKit, // Actualizar estado del kit
     getAllKitCompleted, // Obtener solo kits completos
 }
