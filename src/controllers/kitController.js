@@ -264,14 +264,18 @@ const clonarKit = async (req, res) => {
         const transaction = await db.transaction();
 
         const kitOriginal = await kit.findByPk(kitId, {
-            include: [{ model: materia }]
+            include: [{ model: materia }],
+            transaction
         }).catch(err => {
             console.log(err);
             return null; 
         });
 
         // Validamos la existencia
-        if(!kitOriginal) return res.status(404).json({msg: 'No hemos encontrado este kit'});
+        if(!kitOriginal) {
+            await transaction.rollback();
+            return res.status(404).json({msg: 'No hemos encontrado este kit'});
+        }
         // Caso contrario, avanzamos...
 
         const nuevoKit = await kit.create({
@@ -282,10 +286,10 @@ const clonarKit = async (req, res) => {
             extensionId: kitOriginal.extensionId,
             state: kitOriginal.state
 
-        }).catch(err => {
+        }, { transaction }).catch(err => {
             console.log(err);
             return null;
-        });
+        }); 
 
         if(!nuevoKit) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
 
@@ -300,26 +304,24 @@ const clonarKit = async (req, res) => {
         // Caso contrario
         // Caso contrario, avanzamos
         if(nuevaMateria.length){
-            await itemKit.bulkCreate(nuevaMateria)
+            await itemKit.bulkCreate(nuevaMateria,  { transaction })
             .then((res) =>  {
-                console.log('Crea el bulk')
-                console.log(res)
                 return true
             })
             .catch(err => {
-                console.log('Fallo el bulk');
                 console.log(err);
                 return null;
             });
             
+            await transaction.commit();
             return res.status(201).json({msg: 'Kit clonado con éxito!'});
         }
-        console.log('Materia prima:')
-        console.log(nuevaMateria);
+
         res.status(200).json({msg: 'Para directo'});
 
     }catch(err){
         console.log(err);
+        await transaction.rollback();
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
