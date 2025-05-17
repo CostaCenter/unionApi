@@ -15,7 +15,7 @@ const clientRoutes = require('./client'); // Clientes
 const cotizacionRoutes = require('./cotizacion'); // Cotización
 const requisicionroutes = require('./requisicion'); // Requisiciones
 
-
+const superKitsRoutes = require('./superkits');
  
 router.use('/users', userRoutes);
 router.use('/proveedores', proveedorRoutes);
@@ -30,6 +30,7 @@ router.use('/kit', kitRoutes);
 router.use('/client', clientRoutes);
 router.use('/cotizacion', cotizacionRoutes);
 router.use('/requisicion', requisicionroutes);
+router.use('/superkit', superKitsRoutes);
  
 
  

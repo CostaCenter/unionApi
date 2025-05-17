@@ -237,7 +237,7 @@ const addItem = async (req, res) => {
         .then(async res => {
             const updateKit = await changeState(kitId, 'desarrollo')
             return res
-        }) 
+        })  
         .catch(err => {
             console.log(err); 
             return null
@@ -255,7 +255,7 @@ const addItem = async (req, res) => {
     }
 }
 // Clonar KIT
-const clonarKit = async (req, res) => {
+const clonarKit = async (req, res) => { 
     try{
         // Recibimos parametro por params
         const { kitId } = req.params;
@@ -286,12 +286,12 @@ const clonarKit = async (req, res) => {
             extensionId: kitOriginal.extensionId,
             state: kitOriginal.state
 
-        }, { transaction }).catch(err => {
-            console.log(err);
-            return null;
-        }); 
+        }, { transaction }); 
 
-        if(!nuevoKit) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+        if(!nuevoKit) { 
+            await transaction.rollback();
+            return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+        }
 
         // Listamos la materia
         const nuevaMateria = kitOriginal.materia.map((mp) => ({
@@ -303,25 +303,33 @@ const clonarKit = async (req, res) => {
         }));
         // Caso contrario
         // Caso contrario, avanzamos
-        if(nuevaMateria.length){
+        if(nuevaMateria.length > 0){
             await itemKit.bulkCreate(nuevaMateria,  { transaction })
             .then((res) =>  {
                 return true
-            })
-            .catch(err => {
-                console.log(err);
-                return null;
             });
             
             await transaction.commit();
             return res.status(201).json({msg: 'Kit clonado con éxito!'});
+        }else{
+
+            await transaction.commit();
+
+            return res.status(201).json({msg: 'Kit clonado con éxito (El Kit original no tenia items).'})
+        }
+    }catch(err){
+        if (transaction) {
+            try {
+                 await transaction.rollback();
+                 console.error('Rollback de transacción exitoso.');
+            } catch (rollbackErr) {
+                 console.error('Error haciendo rollback de la transacción:', rollbackErr);
+                 // Opcional: reportar este error de rollback si es crítico
+            }
         }
 
-        res.status(200).json({msg: 'Para directo'});
+        console.error('Error en la funcion clonar Kit.', err);
 
-    }catch(err){
-        console.log(err);
-        await transaction.rollback();
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }

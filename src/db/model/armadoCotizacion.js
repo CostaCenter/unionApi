@@ -1,21 +1,23 @@
 const { DataTypes } = require('sequelize');
- 
+
 module.exports = sequelize => {
-    sequelize.define('itemKit', { 
+    sequelize.define('armadoCotizacion', { 
         id: { 
             type: DataTypes.INTEGER,
             primaryKey: true, 
             autoIncrement: true 
         },
-        // Nombre
+        // Cantidad de kits
         cantidad: {
             type: DataTypes.STRING
         },
-        medida: {
+        // Precio
+        precio: {
             type: DataTypes.STRING
         },
-        calibre: {
-            type: DataTypes.INTEGER
-        }
+        // descuento
+        descuento: {
+            type: DataTypes.STRING
+        }, 
     })  
-}  
+} 

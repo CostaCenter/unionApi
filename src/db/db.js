@@ -19,7 +19,11 @@ const modelItemKit = require('./model/itemKit'); // Item.
 const modelClient = require('./model/client'); // Cliente
 const modelCotizacion = require('./model/cotizacion'); // Cotización
 const modelKitCotizacion = require('./model/kitCotizacion');
-
+// ARMADOS PARA COTIZACIÓN
+const modelArmado = require('./model/armado'); // Armar elementos
+const modelArmadoKit = require('./model/armadoKit'); // Relación kits y armado
+const modelArmadoCotizacion = require('./model/armadoCotizacion'); // Relacion Armado y cotización
+ 
 // PARTE COMPRAS ALMACEN
 const modelInventario = require('./model/inventario'); // Inventario
 const modelUbicacion = require('./model/ubicacion'); // Ubicación.
@@ -72,18 +76,20 @@ modelItemKit(sequelize);
 modelClient(sequelize);
 modelCotizacion(sequelize);
 modelKitCotizacion(sequelize);
-
-
-
+modelKitCotizacion(sequelize);
+modelArmado(sequelize);
+modelArmadoCotizacion(sequelize);
+modelArmadoKit(sequelize);
 // COMPRAS E INVENTARIO
 // modelInventario(sequelize);
 // modelUbicacion(sequelize);
 // modelMovimientoInventario(sequelize); 
 
-modelRequisicion(sequelize);
+modelRequisicion(sequelize); 
+
 const { user, proveedor, linea, categoria, materia, extension, price, kit, itemKit,
-  client, cotizacion, kitCotizacion, requisicion
- } = sequelize.models; 
+  client, cotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits
+} = sequelize.models; 
 
 
 // RELACIONES 
@@ -177,7 +183,30 @@ kit.belongsToMany(cotizacion, {
   through: kitCotizacion, 
   foreignKey: 'kitId' 
 });
+
+
+// ARMAR PRODUCTOS CON KITS
+armado.belongsToMany(kit, { 
+  through: 'armadoKits', // Nombre de la tabla intermedia
+  foreignKey: 'armadoId' 
+});
+
+kit.belongsToMany(armado, { 
+  through: 'armadoKits', 
+  foreignKey: 'kitId' 
+});
+
+cotizacion.belongsToMany(armado, { 
+  through: armadoCotizacion, // Nombre de la tabla intermedia
+  foreignKey: 'cotizacionId' 
+}); 
+
+armado.belongsToMany(cotizacion, { 
+  through: armadoCotizacion, 
+  foreignKey: 'armadoId' 
+});
   
+
 
 cotizacion.hasMany(requisicion, {
   as: 'requisiciones',

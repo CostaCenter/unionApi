@@ -43,7 +43,7 @@ const createKitServices = async(code, nombre, description, extension, linea, cat
         console.log(err);
         return 500
     }
-}
+} 
  
 // Add Items To Kit. 
 const addItemToKit = async (mtId, kitId, cantidad, medida, calibre) => {
