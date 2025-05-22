@@ -132,7 +132,7 @@ const addProveedor = async (req, res) => {
 const updateProveedor = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { proveedorId, type, nit, img, nombre, siglas, direccion, ciudad, departamento, pais, fijo, phone} = req.body;
+        const { proveedorId, type, nit, img, email, nombre, siglas, direccion, ciudad, departamento, pais, fijo, phone} = req.body;
         // Validamos que entre el parámetro
         if(!proveedorId) return res.status(501).json({msg: 'Parámetro invalido.'});
         
@@ -156,6 +156,7 @@ const updateProveedor = async (req, res) => {
             departamento,
             pais,
             fijo,
+            email,
             phone
         },{
             where: {
