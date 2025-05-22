@@ -1,8 +1,39 @@
 const express = require('express');
-const { materia, proveedor, extension, price, kit, itemKit, linea, categoria, db} = require('../db/db');
+const { materia, proveedor, extension, price, kit, itemKit, linea, categoria, Op, db} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 
+// Buscamos kits por Query
+const searchKitsQuery = async(req, res) => {
+    try {
+        const { query } = req.query; // Obtiene el parámetro de búsqueda desde la URL
+
+        if (!query) {
+            return res.status(400).json({ message: "Debes proporcionar un término de búsqueda." });
+        }
+
+        const kits = await kit.findAll({
+            where: {
+                [Op.or]: [
+                    { name: { [Op.iLike]: `%${query}%` } }, // Búsqueda flexible (ignora mayúsculas/minúsculas)
+                ],
+                state: 'completa'
+            },
+            attributes: { exclude: ['createdAt', 'updatedAt'] },
+            limit: 10, // Máximo 10 resultados para eficiencia
+        }).catch((err => {
+            console.log(err);
+            return null;
+        }));
+
+        if(!kits) return res.status(404).json({msg: 'No encontrado'})
+
+        res.status(200).json(kits);
+    } catch (error) {
+        console.error("Error al buscar productos:", error);
+        res.status(500).json({ message: "Error interno del servidor" });
+    }
+}
 // Obtener todos los kikts Terminados
 const getAllKitCompleted = async(req, res) => {
     try{
@@ -254,6 +285,32 @@ const addItem = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
+
+const updateItemOnKit = async (req, res) => {
+    try{
+        // Recibimos por body
+        const { kitId, materiaId, medida } = req.body;
+        // Validamos que los datos entren correctamente
+        if(!kitId || !materiaId || !medida) return res.status(400).json({msg: 'No hemos recibido los datos correctamente.'});
+        // Caso contrario, avanzamos
+
+        const updateItemKit = itemKit.update({
+            medida
+        }, {
+            where: {
+                kitId,
+                materiaId
+            }
+        });
+
+        if(!updateItemKit) return res.status(502).json({msg: 'No hemos encontrado esto.'});
+        // Avanzamos
+        res.status(201).json({msg: 'Actualizado con exito'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
 // Clonar KIT
 const clonarKit = async (req, res) => { 
     try{
@@ -403,6 +460,7 @@ const deleteKit = async(req, res) => {
     }
 }
 module.exports = { 
+    searchKitsQuery, // SearchKits With Query
     addKit, // Agregamos KIT.
     addItem, // Agregar Item
     updateKitt, // Actualizar kit
@@ -414,4 +472,5 @@ module.exports = {
     getKits, // Obtenemos los kits sin precios
     changeStateToKit, // Actualizar estado del kit
     getAllKitCompleted, // Obtener solo kits completos
+    updateItemOnKit, // Update ItemKits
 }

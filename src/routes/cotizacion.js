@@ -1,5 +1,5 @@
 const express = require('express');
-const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion } = require('../controllers/cotizacion');
+const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit } = require('../controllers/cotizacion');
 
 const router = express.Router();
 
@@ -16,6 +16,9 @@ router.route('/new')
 router.route('/add/item')
     .post(addItemToCotizacion)
     .put(updateItemToCotizacion)
+
+router.route('/add/superKit/item')
+    .post(addSuperKit)
 
 router.route('/remove/item')
     .delete(deleteKitOnCotizacion)

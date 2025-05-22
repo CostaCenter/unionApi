@@ -1,5 +1,5 @@
 const express = require('express');
-const { materia, cotizacion,  proveedor, extension, price, kit, itemKit, linea, categoria, requisicion, db, Op} = require('../db/db');
+const { materia, cotizacion, armado, proveedor, extension, price, kit, itemKit, linea, categoria, requisicion, db, Op} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 
@@ -55,6 +55,17 @@ const getRequisicion = async (req, res) => {
                     through: {
                         attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
                     }
+                },{
+                    model: armado,
+                    include: [{
+                        model: kit,
+                        include:[{
+                            model: materia
+                        }]
+                    }],
+                    through: {
+                        attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
+                    }
                 }],
                 
             }]   
@@ -69,7 +80,7 @@ const getRequisicion = async (req, res) => {
 
 
         const kits = searchReq.cotizacion.kits
-
+        const armados = searchReq.cotizacion.armados;
         const totalMateriaPrima  = {};
 
         kits.forEach(kit => {
@@ -93,9 +104,34 @@ const getRequisicion = async (req, res) => {
             })
 
         })
+        armados.forEach(armaditos => {
+            const cantidadArmados = armaditos.armadoCotizacion.cantidad;
+
+            armaditos.kits.forEach(kit => {
+                const cantidadKit = kit.armadoKits.cantidad;
+    
+                kit.materia.forEach(mt => {
+                    const key = `${mt.id}`
+                    const cantidadArmados = Number(mt.itemKit.medida) * Number(cantidadKit);
+                    
+                    if (!totalMateriaPrima[key]) {
+                        totalMateriaPrima[key] = {
+                            id: mt.id,
+                            nombre: mt.description,
+                            medidaOriginal: mt.medida,
+                            unidad: mt.unidad,
+                            cantidad: 0 
+                        };
+                    }
+    
+                    totalMateriaPrima[key].cantidad += cantidadArmados;
+                })
+    
+            })
+
+        })
 
         Object.values(totalMateriaPrima);
-
         res.status(200).json({
             requisicion: searchReq,
             cantidades: Object.values(totalMateriaPrima)
@@ -130,7 +166,20 @@ const getMultipleReq = async (req, res) => {
                     through: {
                         attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
                     }
-                }],
+                },
+                {
+                    model: armado,
+                    include: [{
+                        model: kit,
+                        include:[{
+                            model: materia
+                        }]
+                    }],
+                    through: {
+                        attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
+                    }
+                }
+                ], 
             }]
         }).catch(err => {
             console.log(err);
@@ -170,16 +219,20 @@ const getMultipleReq = async (req, res) => {
                 })
     
             })
-        })
-        
- 
-        Object.values(totalMateriaPrima);
 
-        res.status(200).json({
-            requisicion: Object.values(totalRequsiciones),
-            cantidades: Object.values(totalMateriaPrima)
-        });  
+            
+        })
+
+
+       
         
+        // Object.values(totalMateriaPrima);
+
+        // res.status(200).json({
+        //     requisicion: Object.values(totalRequsiciones),
+        //     cantidades: Object.values(totalMateriaPrima)
+        // });  
+        res.status(200).json(multiReq)
 
     }catch(err){
         console.log(err);

@@ -1,15 +1,17 @@
 const express = require('express');
-const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits } = require('../controllers/kitController');
+const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit } = require('../controllers/kitController');
 
 const router = express.Router();
 
+router.route('/get/s/search/')
+    .get(searchKitsQuery)
 router.route('/getAllComplete')
     .get(getAllKitCompleted)
 
 router.route('/getAll/general')
     .get(getKits)
 
-router.route('/getAll')
+router.route('/getAll') 
     .get(getAllKit);
 
 router.route('/get/:kitId')
@@ -23,7 +25,8 @@ router.route('/remove/item')
     .delete(deleteItemOnKit)
 
 router.route('/add/item')
-    .post(addItem); 
+    .post(addItem)
+    .put(updateItemOnKit)
 
 router.route('/clone/:kitId')
     .get(clonarKit)

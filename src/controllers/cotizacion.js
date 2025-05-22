@@ -1,7 +1,7 @@
 const express = require('express');
-const { client, kit, materia, cotizacion, kitCotizacion } = require('../db/db');
+const { client, kit, materia, cotizacion, armado, armadoCotizacion, kitCotizacion } = require('../db/db');
 const { Op } = require('sequelize');
-const { createCotizacion, addItemToCotizacionServices } = require('./services/cotizacionServices');
+const { createCotizacion, addItemToCotizacionServices, addSuperKitToCotizacionServices } = require('./services/cotizacionServices');
 const { createRequisicion } = require('./services/requsicionService');
 const dayjs = require('dayjs');
 
@@ -51,6 +51,8 @@ const getAllCotizaciones = async(req, res) => {
                 }
             }, {
                 model: client
+            }, {
+                model: armado
             }], 
             order:[['createdAt', 'DESC']]
         }).catch(err => {
@@ -77,7 +79,7 @@ const getCotizacion = async(req, res) => {
         // Caso contrario, consultados
         const searchCoti = await cotizacion.findByPk(cotiId, {
             attributes: { exclude: ['updatedAt']},
-            include:[{
+            include:[{model: client},{
                 model: kit,
                 include:[{
                     model: materia,
@@ -86,6 +88,8 @@ const getCotizacion = async(req, res) => {
                 through: {
                     attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
                 }
+            }, {
+                model: armado,
             }]
         }).catch(err => {
             console.log(err);
@@ -148,6 +152,32 @@ const addItemToCotizacion = async(req, res) => {
 
 
 
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+// agregar superKit a la cotizacion
+const addSuperKit = async(req, res) => {
+    try{
+        // Recibimos datos por body 
+        const { cotizacionId, superKitId, cantidad, precio, descuento } = req.body; // Destructuramos
+    
+        // Validamos la entrada de parámetros
+        if(!cotizacionId || !superKitId || !cantidad || !precio) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        
+        // Enviamos petición asincrónica - Consultando una función services. Del Archivo cotizacionServices.js
+        // Pasamos la cotización, el superKit, la cantidad, el precio y un descuento si tiene.
+        const sendItem = await addSuperKitToCotizacionServices(cotizacionId, superKitId, cantidad, precio, descuento)
+        .catch(err => {
+            console.log(err);
+            return null;
+        });
+        if(sendItem == 200) return res.status(200).json({msg: 'Ya existe este superKit dentro de la cotización.'}); 
+        if(!sendItem || sendItem == 502) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+        // Caso contrario, enviamos la creación
+        res.status(201).json(sendItem);
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
@@ -261,4 +291,5 @@ module.exports = {
     getAllCotizaciones, // Obtener todas las cotizaciones
     searchClientQuery, // QUERY
     acceptCotizacion, // Aceptar cotización
+    addSuperKit, // Nuevo superKit en Cotización.
 }  

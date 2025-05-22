@@ -1,4 +1,4 @@
-const { cotizacion, kitCotizacion } = require('../../db/db');
+const { cotizacion, kitCotizacion, armado, armadoCotizacion } = require('../../db/db');
 
 // Crear cotizacion
 const createCotizacion = async (clientId, name, description, time, fechaAprobada, price, descuento, iva) => {
@@ -54,8 +54,34 @@ const addItemToCotizacionServices = async(cotizacionId, kitId, cantidad, precio,
     return addItemToCoti;
 }
 
+// Agregar item cotización
+const addSuperKitToCotizacionServices = async(cotizacionId, armadoId, cantidad, precio, descuento) => {
+    const searchItemOnCoti = await armadoCotizacion.findOne({
+        where: {
+            cotizacionId,
+            armadoId
+        }
+    }).catch(err => null);
+
+    if(searchItemOnCoti) return 200
+    // Caso contrario, permita que se cree
+    const addItemToCoti = await armadoCotizacion.create({
+        cotizacionId,
+        cantidad,
+        precio,
+        descuento: descuento,
+        armadoId,
+    }).catch(err => {
+        console.log(err);
+        return null;
+    }); 
+    if(!addItemToCoti) return 502
+    return addItemToCoti;
+}
+
 // Exportación
 module.exports = {
     createCotizacion,
-    addItemToCotizacionServices
+    addItemToCotizacionServices,
+    addSuperKitToCotizacionServices
 }
