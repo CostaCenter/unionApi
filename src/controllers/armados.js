@@ -6,6 +6,7 @@ const { createRequisicion } = require('./services/requsicionService');
 const dayjs = require('dayjs');
 const { addItemToArmado } = require('./services/armadoServices');
 const multer = require('multer');
+const { addLog } = require('./services/logServices');
 
 const cloudinary = require('cloudinary').v2;
 const storage = multer.memoryStorage();
@@ -111,7 +112,7 @@ const getAll = async (req, res) => {
 const newArmado = async (req, res) => {
     try{ 
         // Recibimos variables por body
-        const { name, description, show } = req.body;
+        const { name, description, show, userId} = req.body;
         // Validamos la entrada
         if(!name || !description  ) return res.status(501).json({msg: 'Los parámetros ingresado no son validos.'});
         // Caso contrario, avanzamos...
@@ -129,6 +130,10 @@ const newArmado = async (req, res) => {
             img: result.secure_url,
             show, 
             state: 'active'
+        }).then(async (res) => {
+            // Entidad, entidadId, accion, detalle, fecha, userId 
+            const a = await addLog('superkits', res.id, 'create', 'Creó superkit', userId)
+            return res
         }).catch(err => {
             console.log(err);
             return null;
@@ -149,19 +154,25 @@ const newArmado = async (req, res) => {
 const addItemArmado = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { armadoId, kitId, cantidad} = req.body;
+        const { armadoId, kitId, cantidad, userId} = req.body;
 
         //Validamos que entren correctamente.
         if(!armadoId || !kitId || !cantidad ) return res.status(501).json({msg: 'Los parámetros no son validos.'});
         
         // Caso contrario, avanzamos...
-
+ 
         const addChoosed = await addItemToArmado(armadoId, kitId, cantidad)
         .then(res => res)
+        .then(async (res) => {
+            // Entidad, entidadId, accion, detalle, fecha, userId 
+            const a = await addLog('superkits', armadoId, 'add', 'Añadió item al superkit', userId, kitId)
+            return res
+        })
         .catch(err => {
             console.log(err); 
             return null
         });
+
         if(addChoosed == 500) return res.status(500).json({msg: 'Falló la función.'});
         if(addChoosed == 502) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
         if(addChoosed == 404) return res.status(404).json({msg: 'No hemos encontrado esto.'});
@@ -172,10 +183,8 @@ const addItemArmado = async (req, res) => {
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
-    }
+    } 
 }
-
-
 
 
 module.exports = { 

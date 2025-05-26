@@ -30,6 +30,7 @@ const modelUbicacion = require('./model/ubicacion'); // Ubicación.
 const modelMovimientoInventario = require('./model/movimientosInventario'); // Movimiento en inventario
 
 const modelRequisicion = require('./model/requisicion');
+const modelLogs = require('./model/logs');
 
 
 const entorno = true;    
@@ -86,9 +87,9 @@ modelArmadoKit(sequelize);
 // modelMovimientoInventario(sequelize); 
 
 modelRequisicion(sequelize); 
-
+modelLogs(sequelize);
 const { user, proveedor, linea, categoria, materia, extension, price, kit, itemKit,
-  client, cotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits
+  client, cotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log
 } = sequelize.models; 
 
 
@@ -162,7 +163,11 @@ materia.belongsToMany(kit, {
   through: 'itemKit', 
   foreignKey: 'materiaId' 
 });
- 
+
+user.hasMany(log, {
+  foreignKey: 'userId'
+});
+log.belongsTo(user)
 
 // CLIENTES Y COTIZACIÓN
 // -----------------------

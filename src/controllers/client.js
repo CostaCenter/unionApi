@@ -1,6 +1,7 @@
 const express = require('express');
 const { client } = require('../db/db');
 const { Op } = require('sequelize');
+const { addLog } = require('./services/logServices');
 
 const getAllClient = async(req, res) => {
     try{
@@ -23,7 +24,7 @@ const getAllClient = async(req, res) => {
 const newClient = async(req, res) => {
     try{
         // Recibimos datos del cliente por body
-        const { type, nit, photo, nombre, siglas, direccion, ciudad, departamento, pais, fijos, phone, email } = req.body;
+        const { type, nit, photo, nombre, siglas, direccion, ciudad, departamento, pais, fijos, phone, email, userId } = req.body;
     
         // Validamos que los datos entren correctamente
         if(!type || !nit || !nombre || !direccion || !ciudad || !departamento || !phone ) return res.status(501).json({msg: 'Los parámetros no son validos.'});
@@ -33,7 +34,8 @@ const newClient = async(req, res) => {
             where: {
                 nit
             }
-        }).catch(err => {
+        })
+        .then().catch(err => {
             console.log(err);
             return null;
         });
@@ -54,7 +56,13 @@ const newClient = async(req, res) => {
             fijos,
             phone,
             email
-        }).catch(err => {
+        })
+        .then(async (res) => {
+            // Entidad, entidadId, accion, detalle, fecha, userId
+            const a = await addLog('creacion_clientes', res.id, 'create', 'Creo este cliente', userId)
+            return res
+        })
+        .catch(err => {
             console.log(err);
             return null;
         });
@@ -72,7 +80,7 @@ const newClient = async(req, res) => {
 const updateClientFunction = async(req, res) => {
     try{
         // Recibimos datos por body
-        const { clientId, type, nit, photo, nombre, siglas, direccion, ciudad, departamento, pais, fijos, phone, email } = req.body;
+        const { clientId, type, nit, photo, nombre, siglas, direccion, ciudad, departamento, pais, fijos, phone, email, userId } = req.body;
         if(!clientId) return res.status(501).json({msg: 'Este parámetro no es valido'});
 
         // Caso contrario, avanzamos
@@ -99,8 +107,13 @@ const updateClientFunction = async(req, res) => {
             where: {
                 id: clientId
             }
+        })
+        .then(async (res) => {
+            // Entidad, entidadId, accion, detalle, fecha, userId
+            const a = await addLog('creacion_clientes', clientId, 'update', 'Actualizó este cliente', userId)
+            return res
         }).catch(err => {
-            console.log(err);
+            console.log(err); 
             return null;
         });
         // Si no obtenemos respuesta, enviamos error 502!

@@ -28,10 +28,10 @@ router.route('/add/item')
     .post(addItem)
     .put(updateItemOnKit)
 
-router.route('/clone/:kitId')
+router.route('/clone/:kitId/:userId')
     .get(clonarKit)
 
-router.route('/delete/:kitId')
+router.route('/delete/:kitId/:userId')
     .delete(deleteKit)
 
 router.route('/updateState')

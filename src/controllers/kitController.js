@@ -2,6 +2,7 @@ const express = require('express');
 const { materia, proveedor, extension, price, kit, itemKit, linea, categoria, Op, db} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
+const { addLog } = require('./services/logServices');
 
 // Buscamos kits por Query
 const searchKitsQuery = async(req, res) => {
@@ -112,7 +113,15 @@ const getAllKit = async(req, res) => {
     try{
         // Buscamos todos los elementos dentro de la base de datos 
         const searchAll = await kit.findAll({
-            include:[{ 
+            include:[{
+                model: materia,
+                include:[{
+                    model: price,
+                    where: {
+                        state: 'active'
+                    }
+                }]
+            },{ 
                 model: categoria,
                 attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
             },
@@ -193,7 +202,7 @@ const getKit = async(req, res) => {
 const addKit = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { code, nombre, description, extension, linea, categoria } = req.body;
+        const { code, nombre, description, extension, linea, categoria, userId } = req.body;
         // Validamos que los datos entren correctamente
         if(!nombre || !extension) return res.status(501).json({msg: 'Los parámetros no son validos.'});
         // Caso contrario, avanzamos...
@@ -208,6 +217,8 @@ const addKit = async (req, res) => {
                 return null;
             })
             if(addKit == 502) return res.status(500).json({msg: 'No hemos logrado crear este kit'})
+            // Entidad, entidadId, accion, detalle, fecha, userId
+            const a = await addLog('kits', addKit.id, 'create', 'Creo nuevo kit', userId)
             return res.status(201).json(addKit); 
 
 
@@ -225,7 +236,7 @@ const addKit = async (req, res) => {
 const updateKitt = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { kitId, nombre, description, extensionId, lineaId, categoriumId } = req.body;
+        const { kitId, nombre, description, extensionId, lineaId, categoriumId, userId } = req.body;
 
         // Validamos
         if(!kitId) return res.status(501).json({msg: 'Parametro invalido.'});
@@ -240,7 +251,13 @@ const updateKitt = async (req, res) => {
             where: {
                 id: kitId
             }
-        }).catch(err => {
+        })
+        .then(async (res) => {
+            // Entidad, entidadId, accion, detalle, fecha, userId
+            const a = await addLog('kits', kitId, 'update', 'Actualizó datos generales de este kit', userId)
+            return res
+        })
+        .catch(err => {
             console.log(err);
             return 502;
         });
@@ -257,7 +274,7 @@ const updateKitt = async (req, res) => {
 const addItem = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { mtId, kitId, cantidad, medida, calibre} = req.body;
+        const { mtId, kitId, cantidad, medida, calibre, userId} = req.body;
 
         //Validamos que entren correctamente.
         if(!mtId || !kitId || !cantidad || !medida) return res.status(501).json({msg: 'Los parámetros no son validos.'});
@@ -268,7 +285,12 @@ const addItem = async (req, res) => {
         .then(async res => {
             const updateKit = await changeState(kitId, 'desarrollo')
             return res
-        })  
+        })
+        .then(async (res) => {
+            // Entidad, entidadId, accion, detalle, fecha, userId
+            const a = await addLog('kits', kitId, 'add', 'Añadió materia prima al kit', userId, mtId)
+            return res
+        })
         .catch(err => {
             console.log(err); 
             return null
@@ -289,7 +311,7 @@ const addItem = async (req, res) => {
 const updateItemOnKit = async (req, res) => {
     try{
         // Recibimos por body
-        const { kitId, materiaId, medida } = req.body;
+        const { kitId, materiaId, medida, userId } = req.body;
         // Validamos que los datos entren correctamente
         if(!kitId || !materiaId || !medida) return res.status(400).json({msg: 'No hemos recibido los datos correctamente.'});
         // Caso contrario, avanzamos
@@ -301,6 +323,10 @@ const updateItemOnKit = async (req, res) => {
                 kitId,
                 materiaId
             }
+        }).then(async (res) => {
+            // Entidad, entidadId, accion, detalle, fecha, userId
+            const a = await addLog('kits', kitId, 'update', 'Modificó cantidades del kit', userId, materiaId)
+            return res
         });
 
         if(!updateItemKit) return res.status(502).json({msg: 'No hemos encontrado esto.'});
@@ -315,7 +341,7 @@ const updateItemOnKit = async (req, res) => {
 const clonarKit = async (req, res) => { 
     try{
         // Recibimos parametro por params
-        const { kitId } = req.params;
+        const { kitId , userId} = req.params;
         if(!kitId) return res.status(501).json({msg: 'Invado el parámetro'})
         // Definimos la transacción
         const transaction = await db.transaction();
@@ -364,7 +390,12 @@ const clonarKit = async (req, res) => {
             await itemKit.bulkCreate(nuevaMateria,  { transaction })
             .then((res) =>  {
                 return true
-            });
+            })
+            .then(async (res) => {
+                // Entidad, entidadId, accion, detalle, fecha, userId
+                const a = await addLog('kits', nuevoKit.id, 'create', 'Clonó este kit.', userId)
+                return res
+            })
             
             await transaction.commit();
             return res.status(201).json({msg: 'Kit clonado con éxito!'});
@@ -396,7 +427,7 @@ const clonarKit = async (req, res) => {
 const deleteItemOnKit = async(req, res) => {
     try{
         // Recibo dos varaibles por body
-        const { kitId, itemId } = req.body;
+        const { kitId, itemId, userId} = req.body;
         // Validamos
         if(!kitId || !itemId) return res.status(501).json({msg: 'Los parámetros no son validos'});
         
@@ -404,6 +435,11 @@ const deleteItemOnKit = async(req, res) => {
         const sendToDelete = await deleteDeleteItemOnKit(kitId, itemId)
         .then(async res => {
             const updateKit = await changeState(kitId, 'desarrollo')
+            return res
+        })
+        .then(async (res) => {
+            // Entidad, entidadId, accion, detalle, fecha, userId
+            const a = await addLog('kits', kitId, 'delete', 'Elimino matería prima del kit', userId, itemId)
             return res
         })
         .catch(err => null);
@@ -420,13 +456,14 @@ const deleteItemOnKit = async(req, res) => {
 const changeStateToKit = async(req, res) => {
     try{
         // Recibo parámetros por body
-        const { kitId, state } = req.body;
+        const { kitId, state, userId } = req.body;
         if(!kitId || !state) return res.status(501).json({msg: 'Los parámetros no son validos'});
         // Caso contrario
 
-        const sendPeti = await changeState(kitId, state).catch(err => null);
+        const sendPeti = await changeState(kitId, state).catch(err => null)
         if(!sendPeti) return res.status(502).json({msg: 'No hemos logrado actualizar esto'});
         // caso contrario, actualizado con exito.
+        const a = await addLog('kits', addKit, 'update', `Cambio el estado del kit a ${state}`, userId)
         res.status(200).json({msg: 'Actualizado con éxito'})
     }catch(err){
         console.log(err);
@@ -436,7 +473,7 @@ const changeStateToKit = async(req, res) => {
 // Eliminar Kit
 const deleteKit = async(req, res) => {
     try{
-        const { kitId } = req.params;
+        const { kitId, userId } = req.params;
 
         if(!kitId) return res.status(501).json({msg: 'El parámetro no es valido.'});
         // Caso contrario, avanzamos
@@ -445,7 +482,12 @@ const deleteKit = async(req, res) => {
         // Validamos
         if(!kitAEliminar) return res.status(404).json({msg: 'No hemos encontrado este kit.'});
         
-        const sendRemove = await kitAEliminar.destroy().catch(err => {
+        const sendRemove = await kitAEliminar.destroy()
+        .then(async (res) => {
+            // Entidad, entidadId, accion, detalle, fecha, userId
+            const a = await addLog('kits', kitId, 'delete', 'Eliminó kit', userId)
+            return res
+        }).catch(err => {
             console.log(err);
             return null;
         });
