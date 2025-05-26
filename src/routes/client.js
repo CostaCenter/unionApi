@@ -1,10 +1,14 @@
 const express = require('express');
-const { newClient } = require('../controllers/client');
+const { newClient, getAllClient, updateClientFunction } = require('../controllers/client');
 
 const router = express.Router();
 
 router.route('/new')
-    .post(newClient);
+    .post(newClient)
+    .put(updateClientFunction);
+
+router.route('/getAll')
+    .get(getAllClient)
 
 
 module.exports = router; 
