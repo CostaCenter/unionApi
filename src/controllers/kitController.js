@@ -1,5 +1,5 @@
 const express = require('express');
-const { materia, proveedor, extension, price, kit, itemKit, linea, categoria, Op, db} = require('../db/db');
+const { materia, proveedor, extension, price, kit, itemKit, linea, categoria, percentage, Op, db} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 const { addLog } = require('./services/logServices');
@@ -58,7 +58,15 @@ const getAllKitCompleted = async(req, res) => {
                 model: categoria
             },
             {
-                model: linea
+                model: linea,
+                include:[{
+                    model: percentage,
+                    where: {
+                        state: 'active'
+                    },
+                    required:false
+
+                }]
             },{
                 model: extension
             }] 
@@ -112,6 +120,8 @@ const getKits = async(req, res) => {
 const getAllKit = async(req, res) => {
     try{
         // Buscamos todos los elementos dentro de la base de datos 
+        
+        
         const searchAll = await kit.findAll({
             include:[{
                 model: materia,
@@ -124,10 +134,18 @@ const getAllKit = async(req, res) => {
             },{ 
                 model: categoria,
                 attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
-            },
-            {
+            },{
                 model: linea,
+                include:[{
+                    model: percentage,
+                    where: {
+                        state: 'active'
+                    },
+                    required:false
+
+                }],
                 attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
+                
             },{ 
                 model: extension,
                 attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'state'] }
@@ -176,6 +194,14 @@ const getKit = async(req, res) => {
             },
             {
                 model: linea,
+                include:[{
+                    model: percentage,
+                    where: {
+                        state: 'active'
+                    },
+                    required:false
+
+                }], 
                 attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
             },{ 
                 model: extension,

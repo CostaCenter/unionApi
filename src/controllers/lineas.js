@@ -1,5 +1,5 @@
 const express = require('express');
-const { linea, categoria, extension } = require('../db/db');
+const { linea, categoria, extension, percentage} = require('../db/db');
 const { Op } = require('sequelize');
 
 // Controladores para lineas, categorías y extensiones
@@ -392,7 +392,79 @@ const extensionState = async (req, res) => {
     }
 }
 
+// Dar porcentaje a una linea
+const givePercentage = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { lineaId, final, distribuidor } = req.body;
+        // Validamos la entrada de los valores
+        if(!lineaId || !final || !distribuidor) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, comenzamos
+        // Consultamos que no exista otra registro con esos datos
+        const searchPercentage = await percentage.findOne({
+            where: {
+                final,
+                distribuidor,
+                lineaId,
+                state :'active'
+            }
+        });
 
+        if(searchPercentage) return res.status(200).json({msg: 'Estos porcentajes ya estan considerados.'});
+        // Caso contrario, avanzamos
+        // Solicitamos la creación
+
+        const update = await percentage.update({
+            state: 'inactive'
+        }, {
+            where: {
+                lineaId
+            }
+        })
+        const createPercentageForLinea = await percentage.create({
+            final,
+            distribuidor,
+            lineaId,
+            state: 'active'
+        })
+        // Validamos la respuesta.
+        if(!createPercentageForLinea) return res.status(502).json({msg: 'No hemos logrado crear esto'});
+        // Caso contrario, enviamos respuesta
+        res.status(201).json(createPercentageForLinea);
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+    
+}
+
+// Obtenemos todas las lineas con sus porcentajes
+const getAllLineasWithPercentage = async(req, res) => {
+    try{    
+        // Recibimos toda la consulta por url
+        // Procedemos a consultar todas las lineas, donde el porcentaje este activo.
+        const searchAllLineas = await linea.findAll({
+            where: {
+                type: 'comercial'
+            },
+            include:[{
+                model: percentage,
+                where: {
+                    state:'active'
+                },
+                required: false
+            }]
+        });
+        // Validamos
+        if(!searchAllLineas) return res.status(404).json({msg: 'No hay lineas'});
+        // Caso contrario, enviamos respuestas.
+        res.status(200).json(searchAllLineas);
+        
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
 
 module.exports = {
     // LINEA
@@ -411,4 +483,6 @@ module.exports = {
     extensionState, // Actualizar estado de una extensión
 
     getAllFiltros, // Obtenemos todos los filtros
+    givePercentage, // Damos un porcentaje a la linea.
+    getAllLineasWithPercentage, // Obtenemos todas las lineas con porcentajes
 }

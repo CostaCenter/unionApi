@@ -1,5 +1,5 @@
 const express = require('express');
-const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit } = require('../controllers/cotizacion');
+const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion } = require('../controllers/cotizacion');
 
 const router = express.Router();
 
@@ -22,6 +22,9 @@ router.route('/add/superKit/item')
 
 router.route('/remove/item')
     .delete(deleteKitOnCotizacion)
+
+router.route('/remove/superKit')
+    .delete(deleteSuperKitOnCotizacion)
 
 // Aceptar cotización
 router.route('/accept/:cotiId')

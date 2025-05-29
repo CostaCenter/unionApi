@@ -236,6 +236,30 @@ const deleteKitOnCotizacion = async (req, res) => {
     }
 }
 
+// Eliminar item de una cotización
+const deleteSuperKitOnCotizacion = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { cotizacionId, superKidId } = req.body;
+        if(!cotizacionId || !superKidId) return res.status(501).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos...
+
+        const searchKit = await armado.findByPk(superKidId).catch(err => null);
+        const searchCotizacion = await cotizacion.findByPk(cotizacionId).catch(err => null)
+        if(!searchKit || !searchCotizacion) return res.status(404).json({msg: 'No hemos encontrado esto.'});
+        
+        // Caso contrario, eliminamos.
+
+        const deletee = await searchKit.removeCotizacion(searchCotizacion).catch(err => null);
+        if(!deletee) return res.status(502).json({msg: 'No hemos logrado eliminar esto'});
+
+        res.status(200).json({msg: 'Eliminado con éxito'})
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
 // Aprobadar cotizaciónn
 const acceptCotizacion = async (req, res) => {
     try{
@@ -292,4 +316,5 @@ module.exports = {
     searchClientQuery, // QUERY
     acceptCotizacion, // Aceptar cotización
     addSuperKit, // Nuevo superKit en Cotización.
+    deleteSuperKitOnCotizacion, // Eliminar superKit Item
 }  

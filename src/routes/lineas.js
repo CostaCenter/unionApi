@@ -1,5 +1,5 @@
 const express = require('express');
-const { addLinea, updateLinea, lineaState, getAllFiltros } = require('../controllers/lineas');
+const { addLinea, updateLinea, lineaState, getAllFiltros, givePercentage, getAllLineasWithPercentage } = require('../controllers/lineas');
 const router = express.Router();
 
 
@@ -15,5 +15,11 @@ router.route('/new')
 
 router.route('/state')
     .put(lineaState)
+
+router.route('/post/percentage')
+    .post(givePercentage)
+
+router.route('/get/porcentajes')
+    .get(getAllLineasWithPercentage)
 
 module.exports = router; 

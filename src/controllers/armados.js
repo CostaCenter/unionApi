@@ -1,5 +1,5 @@
 const express = require('express');
-const { client, armado, kit, materia, price, cotizacion, kitCotizacion } = require('../db/db');
+const { client, armado, kit, materia, price, cotizacion, kitCotizacion, linea, percentage } = require('../db/db');
 const { Op } = require('sequelize');
 const { createCotizacion, addItemToCotizacionServices } = require('./services/cotizacionServices');
 const { createRequisicion } = require('./services/requsicionService');
@@ -38,6 +38,15 @@ const searchSuperKitsQuery = async(req, res) => {
                         state: 'active',
                         attributes: { exclude: ['iva', 'descuentos', 'createdAt', 'updatedAt']}
                     }]
+                }, {
+                    model:linea,
+                    include:[{
+                        model: percentage,
+                        where: {
+                            state: 'active'
+                        },
+                        required:false
+                    }]
                 }]
             }],
             attributes: { exclude: ['createdAt', 'updatedAt'] },
@@ -66,7 +75,17 @@ const getSuperKit = async (req, res) => {
         // Caso contrario, avanzamos
         const searchSpKit = await armado.findByPk(superKit, {
             include: [{
-                model: kit
+                model: kit,
+                include:[{
+                    model:linea,
+                    include:[{
+                        model: percentage,
+                        where: {
+                            state: 'active'
+                        },
+                        required:false
+                    }]
+                }]
             }] 
         }).catch(err => {
             // Pasamos por consola el error

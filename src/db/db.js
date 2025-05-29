@@ -31,6 +31,7 @@ const modelMovimientoInventario = require('./model/movimientosInventario'); // M
 
 const modelRequisicion = require('./model/requisicion');
 const modelLogs = require('./model/logs');
+const modelPorcentajes = require('./model/porcentajes');
 
 
 const entorno = true;    
@@ -88,8 +89,10 @@ modelArmadoKit(sequelize);
 
 modelRequisicion(sequelize); 
 modelLogs(sequelize);
+modelPorcentajes(sequelize);
+
 const { user, proveedor, linea, categoria, materia, extension, price, kit, itemKit,
-  client, cotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log
+  client, cotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage
 } = sequelize.models; 
 
 
@@ -114,7 +117,12 @@ categoria.hasMany(materia, {
 materia.belongsTo(categoria); 
 
 
-
+// Relacion de porcentajes con la categoría
+linea.hasMany(percentage, {
+  foreignKey: 'lineaId'
+})
+percentage.belongsTo(linea);
+ 
 // ------------------------
 // MATERÍA PRIMA, PROVEEDORES Y PRECIOS
 materia.hasMany(price, {
