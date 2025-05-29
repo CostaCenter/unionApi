@@ -53,7 +53,7 @@ const sequelize = new Sequelize(dburl, {
     //   acquire: 30000, 
     //   idle: 10000
     // }
-  });
+});
   
  
     

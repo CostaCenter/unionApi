@@ -1,6 +1,7 @@
 const express = require('express');
 const { linea, categoria, extension, percentage} = require('../db/db');
 const { Op } = require('sequelize');
+const { addLog } = require('./services/logServices');
 
 // Controladores para lineas, categorías y extensiones
 
@@ -396,7 +397,7 @@ const extensionState = async (req, res) => {
 const givePercentage = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { lineaId, final, distribuidor } = req.body;
+        const { lineaId, final, distribuidor, userId} = req.body;
         // Validamos la entrada de los valores
         if(!lineaId || !final || !distribuidor) return res.status(400).json({msg: 'Los parámetros no son validos.'});
         // Caso contrario, comenzamos
@@ -426,7 +427,10 @@ const givePercentage = async (req, res) => {
             distribuidor,
             lineaId,
             state: 'active'
-        })
+        }).then(async res => {
+            const a = await addLog('lineas', lineaId, 'create', 'Actualizó porcentajes', userId, res.id)
+            return res
+        }) 
         // Validamos la respuesta.
         if(!createPercentageForLinea) return res.status(502).json({msg: 'No hemos logrado crear esto'});
         // Caso contrario, enviamos respuesta
