@@ -390,8 +390,8 @@ const clonarKit = async (req, res) => {
         const nuevoKit = await kit.create({
             name: kitOriginal.name,
             description: kitOriginal.description,
-            lineaId: kitOriginal.lineaId,
-            categoriumdId: kitOriginal.categoriumdId,
+            lineaId: kitOriginal.lineaId, 
+            categoriumId: kitOriginal.categoriumId,
             extensionId: kitOriginal.extensionId,
             state: kitOriginal.state
 

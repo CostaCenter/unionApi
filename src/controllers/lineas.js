@@ -426,7 +426,7 @@ const givePercentage = async (req, res) => {
             final,
             distribuidor,
             lineaId,
-            state: 'active'
+            state: 'active' 
         }).then(async res => {
             const a = await addLog('lineas', lineaId, 'create', 'Actualizó porcentajes', userId, res.id)
             return res

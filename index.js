@@ -47,9 +47,8 @@ app.get('/', (req, res)  => {
 })
  
 app.get('/sign/user', isAuthenticated, (req, res) => {
-  try{
+  try{ 
     console.log(req.user);
-    console.log('entra');
     res.status(200).json({user: req.user})
   }catch(err){
     console.log(err);

@@ -1,5 +1,5 @@
 const express = require('express');
-const { user } = require('../db/db');
+const { user, permission } = require('../db/db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { Op } = require('sequelize');
@@ -23,7 +23,6 @@ const getLogged = async (req, res) => {
 // AUTENTICAR EL TOKEN
 const isAuthenticated = async (req,res, next)=>{
     const token = req.headers.authorization.split(' ')[1];
-    console.log(token);
     if(!token){
         console.log('logueate, por favor');
         return next('Please login to access the data');
@@ -47,7 +46,11 @@ const signIn = async(req, res) => {
             where: {
                 email:phone
             },
-
+            include:[{
+                model: permission,
+                as: 'permissions'
+            }] 
+ 
         }).catch(err => {
             console.log(err);
             return null;

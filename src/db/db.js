@@ -8,10 +8,12 @@ const modelLinea = require('./model/linea'); // Busqueda por linea
 const modelCategoria = require('./model/categoria'); // Busqueda por categoría
 
 const modelMateria = require('./model/materiaPrima'); // Materia Prima
+const modelProducto = require('./model/productoFinal'); // Producto final 
 
 const modelExtension = require('./model/extension'); // Extensiones para productos de venta.
 
 const modelPrice = require('./model/price'); // Tabla de Precios Materia Prima
+const modelProductPrice = require('./model/productPrice'); // Tabla precios de producto terminado
 const modelKit = require('./model/kit'); // Tabla de kits
 
 const modelItemKit = require('./model/itemKit'); // Item.
@@ -33,6 +35,10 @@ const modelRequisicion = require('./model/requisicion');
 const modelLogs = require('./model/logs');
 const modelPorcentajes = require('./model/porcentajes');
 
+// PERMISOS DENTRO DE LA APLICACIÓN
+const modelPermisos = require('./model/permission');
+const modelUserPermission = require('./model/user_permission');
+
 
 const entorno = true;    
 let dburl = entorno ? 'postgresql://postgres:mnfPuhNtcXTFhlurmBdslUBftGBFMZau@centerbeam.proxy.rlwy.net:41058/railway' : 'postgres:postgres:123@localhost:5432/u';
@@ -53,7 +59,7 @@ const sequelize = new Sequelize(dburl, {
     //   acquire: 30000, 
     //   idle: 10000
     // }
-});
+}); 
   
  
     
@@ -63,10 +69,12 @@ modelProveedor(sequelize);
 modelLinea(sequelize);
 modelCategoria(sequelize);
 modelMateria(sequelize);
+modelProducto(sequelize);
 modelExtension(sequelize);
 
 // Materia Prima Precios
 modelPrice(sequelize);
+modelProductPrice(sequelize);
 
 // Kits
 modelKit(sequelize);
@@ -91,12 +99,32 @@ modelRequisicion(sequelize);
 modelLogs(sequelize);
 modelPorcentajes(sequelize);
 
-const { user, proveedor, linea, categoria, materia, extension, price, kit, itemKit,
-  client, cotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage
+// PERMISOS
+modelPermisos(sequelize);
+modelUserPermission(sequelize);
+
+
+const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, itemKit,
+  client, cotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
+  permission, user_permission, 
 } = sequelize.models; 
 
 
 // RELACIONES 
+
+
+// PERMISOS DE USUARIO
+user.belongsToMany(permission, {
+  through: user_permission,
+  foreignKey: 'userId',
+  as: 'permissions'
+});
+
+permission.belongsToMany(user, {
+  through: user_permission,
+  foreignKey: 'permissionId',
+  as: 'users'
+}); 
 // ------------------------
 // LINEAS Y CATEGORÍAS 
 
@@ -115,6 +143,24 @@ categoria.hasMany(materia, {
   });  
 
 materia.belongsTo(categoria); 
+
+// PRODUCTOS
+// Relación uno a muchos
+linea.hasMany(producto, {
+  foreignKey: 'lineaId', // Clave foránea en la tabla contact
+  onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
+});
+
+producto.belongsTo(linea);
+
+// Relación uno a muchos
+categoria.hasMany(producto, {
+foreignKey: 'categoriumId',
+  onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
+});  
+
+producto.belongsTo(categoria); 
+
 
 
 // Relacion de porcentajes con la categoría
@@ -136,6 +182,18 @@ proveedor.hasMany(price, {
 price.belongsTo(proveedor)
 
 
+// PRODUCTO TERMINADO, PROVEEDORES Y PRECIO
+producto.hasMany(productPrice, {
+  onDelete: 'CASCADE',
+})
+productPrice.belongsTo(producto)
+
+proveedor.hasMany(productPrice, {
+  onDelete: 'CASCADE',
+})
+productPrice.belongsTo(proveedor)
+
+ 
 
 
 // KITS 
