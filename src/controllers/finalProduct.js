@@ -5,18 +5,27 @@ const { searchPrice, addPriceMt, updatePriceState, searchProductPrice, updatePro
 
 // Controladores para Producto terminado
 
-const buscarPorQuery = async (req, res) => {
-    try {
+const buscarPorQueryProducto = async (req, res) => {
+    try { 
       const { q } = req.query; // ejemplo: /buscar?q=mesa
   
-      const resultados = await materia.findAll({
+      const resultados = await producto.findAll({
         where: {
             [Op.or]: [
                 { item: { [Op.iLike]: `%${q}%` } },
                 { description: { [Op.iLike]: `%${q}%` } },
-            
             ]
-        }
+        },
+        include:[{
+            model: productPrice,
+            where: {
+                state: 'active'
+            }
+        },{
+            model: linea
+        }, {
+            model: categoria
+        }]
       });
   
       res.json(resultados);
@@ -253,11 +262,11 @@ const addPriceProducto = async(req, res) => {
     }
 }
  
-
 module.exports = { 
     addProductoTerminado, // Agregar producto terminado
     updateProducto, // Actualiza Producto
     getAllProducto, // Obtener todos los productos
     getItemProducto, // Obtener item por ID
     addPriceProducto, // Agregamos precio
+    buscarPorQueryProducto, // Search by query
 }

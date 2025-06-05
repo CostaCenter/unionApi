@@ -1,5 +1,5 @@
 const express = require('express');
-const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion } = require('../controllers/cotizacion');
+const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem } = require('../controllers/cotizacion');
 
 const router = express.Router();
 
@@ -30,5 +30,9 @@ router.route('/remove/superKit')
 router.route('/accept/:cotiId')
     .get(acceptCotizacion)
 
-    
+router.route('/kit/descuento')
+    .put(giveDescuento)
+      
+router.route('/superKit/descuento')
+    .put(giveDescuentoSuperKitItem)
 module.exports = router; 

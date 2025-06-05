@@ -47,7 +47,7 @@ const getAllCotizaciones = async(req, res) => {
                     attributes: { exclude: ['createdAt', 'updatedAt']}
                 }],
                 through: {
-                    attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
+                    attributes: ['id', 'cantidad', 'precio', 'descuento'] // o los campos que tengas en KitCotizacion
                 }
             }, {
                 model: client
@@ -82,11 +82,10 @@ const getCotizacion = async(req, res) => {
             include:[{model: client},{
                 model: kit,
                 include:[{
-                    model: materia,
-                    attributes: { exclude: ['createdAt', 'updatedAt']}
+                    model: materia
                 }],
                 through: {
-                    attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
+                    attributes: ['id', 'cantidad', 'precio', 'descuento'] // o los campos que tengas en KitCotizacion
                 }
             }, {
                 model: armado,
@@ -152,6 +151,67 @@ const addItemToCotizacion = async(req, res) => {
 
 
 
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+// Dar descuento a item en cotización
+const giveDescuento = async(req, res) => {
+    try{
+        // Recibimos datos por body
+        const { kitCotizacionId, descuento } = req.body;
+        // Validamos que los datos entres
+        if(!kitCotizacionId || !descuento) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos
+        // Consultamos que exista este itemCotizacion
+        const getKitCotizacion = await kitCotizacion.findByPk(kitCotizacionId);
+        // Validamos la respuesta
+        if(!getKitCotizacion) return res.status(404).json({msg: 'No hemos encontrado este item en la cotización'});
+        // Caso contrario, avannzamos
+        // Creamos petición para actualizar
+        const updateKitCotizacion = await kitCotizacion.update({
+            descuento
+        }, {
+            where: {
+                id: kitCotizacionId
+            }
+        });
+        // Validamos la respuesta
+        if(!updateKitCotizacion) return res.status(502).json({msg: 'No hemos logrado actualizar esto.'});
+        // Caso contrario, enviamos respuesta 200. ¡Actualizado!
+        res.status(200).json({msg: 'Descuento añadido.'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+// Dar descuento a superKit en cotización
+const giveDescuentoSuperKitItem = async(req, res) => {
+    try{
+        // Recibimos datos por body
+        const { superKitId, descuento } = req.body;
+        // Validamos que los datos entres
+        if(!superKitId || !descuento) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos
+        // Consultamos que exista este itemCotizacion
+        const getKitCotizacion = await armadoCotizacion.findByPk(superKitId);
+        // Validamos la respuesta
+        if(!getKitCotizacion) return res.status(404).json({msg: 'No hemos encontrado este item en la cotización'});
+        // Caso contrario, avannzamos
+        // Creamos petición para actualizar
+        const updateKitCotizacion = await armadoCotizacion.update({
+            descuento
+        }, {
+            where: {
+                id: superKitId
+            }
+        });
+        // Validamos la respuesta
+        if(!updateKitCotizacion) return res.status(502).json({msg: 'No hemos logrado actualizar esto.'});
+        // Caso contrario, enviamos respuesta 200. ¡Actualizado!
+        res.status(200).json({msg: 'Descuento añadido.'});
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
@@ -317,4 +377,6 @@ module.exports = {
     acceptCotizacion, // Aceptar cotización
     addSuperKit, // Nuevo superKit en Cotización.
     deleteSuperKitOnCotizacion, // Eliminar superKit Item
+    giveDescuento, // Dar descuento a kitCotizacion
+    giveDescuentoSuperKitItem, // Dar descuento a item SuperKit
 }  
