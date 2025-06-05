@@ -256,6 +256,16 @@ kit.belongsToMany(cotizacion, {
 });
 
 
+// user.hasOne(cotizacion, {
+//   foreignKey: 'userId',
+//   onDelete: 'CASCADE'
+// });
+// cotizacion.belongsTo(user, {
+//   foreignKey: 'userId',
+// });
+
+
+
 // ARMAR PRODUCTOS CON KITS
 armado.belongsToMany(kit, { 
   through: 'armadoKits', // Nombre de la tabla intermedia

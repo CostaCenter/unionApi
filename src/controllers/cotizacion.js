@@ -1,5 +1,5 @@
 const express = require('express');
-const { client, kit, materia, cotizacion, armado, armadoCotizacion, kitCotizacion } = require('../db/db');
+const { client, kit, materia, cotizacion, armado, armadoCotizacion, kitCotizacion, user } = require('../db/db');
 const { Op } = require('sequelize');
 const { createCotizacion, addItemToCotizacionServices, addSuperKitToCotizacionServices } = require('./services/cotizacionServices');
 const { createRequisicion } = require('./services/requsicionService');
