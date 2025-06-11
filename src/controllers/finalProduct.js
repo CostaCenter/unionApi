@@ -110,7 +110,7 @@ const getAllProducto = async(req, res) => {
 const addProductoTerminado = async(req, res) => {
     try{
         // Recibimos datos por body
-        const { item, description, peso, volumen, procedencia, criticidad, lineaId, categoriumId } = req.body;
+        const { item, description, medida, unidad, peso, volumen, procedencia, criticidad, lineaId, categoriumId } = req.body;
 
         // Validamos que los datos entren correctamente
         if(!item || !description || !lineaId || !categoriumId) return res.status(400).json({msg: 'Los parámetros no son validos.'});
@@ -132,6 +132,8 @@ const addProductoTerminado = async(req, res) => {
         const createItem = await producto.create({
             item,
             description,
+            medida, 
+            unidad,
             peso, 
             volumen,
             procedencia,

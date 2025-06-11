@@ -1,8 +1,11 @@
 const express = require('express');
-const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit } = require('../controllers/kitController');
+const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit, searchKitsForCoti } = require('../controllers/kitController');
 
 const router = express.Router();
 
+router.route('/get/cotizar/search/')
+    .get(searchKitsForCoti)
+    
 router.route('/get/s/search/')
     .get(searchKitsQuery)
 router.route('/getAllComplete')

@@ -20,7 +20,10 @@ const modelItemKit = require('./model/itemKit'); // Item.
 
 const modelClient = require('./model/client'); // Cliente
 const modelCotizacion = require('./model/cotizacion'); // Cotización
+const modelAreaCotizacion = require('./model/areaCotizacion');
 const modelKitCotizacion = require('./model/kitCotizacion');
+const modelProductoCotizacion = require('./model/productoCotizacion');
+
 // ARMADOS PARA COTIZACIÓN
 const modelArmado = require('./model/armado'); // Armar elementos
 const modelArmadoKit = require('./model/armadoKit'); // Relación kits y armado
@@ -40,7 +43,7 @@ const modelPermisos = require('./model/permission');
 const modelUserPermission = require('./model/user_permission');
 
 
-const entorno = true;    
+const entorno = true;     
 let dburl = entorno ? 'postgresql://postgres:mnfPuhNtcXTFhlurmBdslUBftGBFMZau@centerbeam.proxy.rlwy.net:41058/railway' : 'postgres:postgres:123@localhost:5432/u';
  
 const sequelize = new Sequelize(dburl, {
@@ -85,8 +88,10 @@ modelItemKit(sequelize);
 // CLIENTE Y COTIZACIÓN
 modelClient(sequelize);
 modelCotizacion(sequelize);
+modelAreaCotizacion(sequelize);
 modelKitCotizacion(sequelize);
 modelKitCotizacion(sequelize);
+modelProductoCotizacion(sequelize);
 modelArmado(sequelize);
 modelArmadoCotizacion(sequelize);
 modelArmadoKit(sequelize);
@@ -106,7 +111,7 @@ modelUserPermission(sequelize);
 
 const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, itemKit,
   client, cotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
-  permission, user_permission, 
+  permission, user_permission, areaCotizacion, productoCotizacion
 } = sequelize.models; 
 
 
@@ -250,11 +255,39 @@ cotizacion.belongsToMany(kit, {
   through: kitCotizacion, // Nombre de la tabla intermedia
   foreignKey: 'cotizacionId' 
 });
+
 kit.belongsToMany(cotizacion, { 
   through: kitCotizacion, 
   foreignKey: 'kitId' 
 });
 
+
+cotizacion.belongsToMany(producto, { 
+  through: productoCotizacion, // Nombre de la tabla intermedia
+  foreignKey: 'cotizacionId' 
+});
+
+producto.belongsToMany(cotizacion, { 
+  through: productoCotizacion, 
+  foreignKey: 'productoId' 
+});
+
+
+areaCotizacion.belongsTo(cotizacion, {
+  onDelete: 'CASCADE',
+}) 
+cotizacion.belongsTo(areaCotizacion);
+
+
+// KITCOTIZACION
+areaCotizacion.hasMany(kitCotizacion)
+kitCotizacion.belongsTo(areaCotizacion)
+
+areaCotizacion.hasMany(armadoCotizacion)
+armadoCotizacion.belongsTo(areaCotizacion)
+
+areaCotizacion.hasMany(productoCotizacion)
+productoCotizacion.belongsTo(areaCotizacion);
 
 // user.hasOne(cotizacion, {
 //   foreignKey: 'userId',

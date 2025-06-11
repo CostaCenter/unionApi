@@ -4,6 +4,71 @@ const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/pric
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 const { addLog } = require('./services/logServices');
 
+
+// Buscamos kits para cotizar por Query
+const searchKitsForCoti = async (req, res) => {
+    try{
+        // Recibo dato por query
+        const { query } = req.query; // Obtiene el parámetro de búsqueda desde la URL
+
+        if (!query) {
+            return res.status(400).json({ message: "Debes proporcionar un término de búsqueda." });
+        }
+
+        const kits = await kit.findAll({
+            where: {
+                [Op.and]: [
+                    { state: 'completa' },
+                    {
+                        [Op.or]: [
+                            { name: { [Op.iLike]: `%${query}%` } }, // Búsqueda flexible (ignora mayúsculas/minúsculas)
+                        ],
+                    }
+                ]
+                
+            },  
+            include:[{
+                model: materia,
+                attributes: { exclude: ['createdAt', 'updatedAt'] },
+                include:[{
+                    model: price,
+                    where: {
+                        state: 'active'
+                    }, 
+                    attributes: { exclude: ['createdAt', 'updatedAt'] },
+
+                }]
+            },{
+                model: categoria
+            },
+            {
+                model: linea,
+                include:[{
+                    model: percentage,
+                    where: {
+                        state: 'active'
+                    },
+                    required:false
+
+                }]
+            },{
+                model: extension
+            }],
+            attributes: { exclude: ['createdAt', 'updatedAt'] },
+            limit: 15, // Máximo 10 resultados para eficiencia
+        }).catch((err => {
+            console.log(err);
+            return null;
+        }));
+
+        if(!kits) return res.status(404).json({msg: 'No encontrado'})
+
+        res.status(200).json(kits);
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
 // Buscamos kits por Query
 const searchKitsQuery = async(req, res) => {
     try {
@@ -541,4 +606,5 @@ module.exports = {
     changeStateToKit, // Actualizar estado del kit
     getAllKitCompleted, // Obtener solo kits completos
     updateItemOnKit, // Update ItemKits
+    searchKitsForCoti, // Buscamos kits para cotizar
 }
