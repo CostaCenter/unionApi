@@ -20,6 +20,7 @@ const modelItemKit = require('./model/itemKit'); // Item.
 
 const modelClient = require('./model/client'); // Cliente
 const modelCotizacion = require('./model/cotizacion'); // Cotización
+const modelNotasCotizacion = require('./model/notasCotización'); // Notas cotización
 const modelAreaCotizacion = require('./model/areaCotizacion');
 const modelKitCotizacion = require('./model/kitCotizacion');
 const modelProductoCotizacion = require('./model/productoCotizacion');
@@ -88,6 +89,7 @@ modelItemKit(sequelize);
 // CLIENTE Y COTIZACIÓN
 modelClient(sequelize);
 modelCotizacion(sequelize);
+modelNotasCotizacion(sequelize);
 modelAreaCotizacion(sequelize);
 modelKitCotizacion(sequelize);
 modelKitCotizacion(sequelize);
@@ -110,7 +112,7 @@ modelUserPermission(sequelize);
 
 
 const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, itemKit,
-  client, cotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
+  client, cotizacion, notaCotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
   permission, user_permission, areaCotizacion, productoCotizacion
 } = sequelize.models; 
 
@@ -251,33 +253,38 @@ client.hasMany(cotizacion, {
 cotizacion.belongsTo(client); 
 
 // Relación Muchos a muchos
-cotizacion.belongsToMany(kit, { 
+areaCotizacion.belongsToMany(kit, { 
   through: kitCotizacion, // Nombre de la tabla intermedia
-  foreignKey: 'cotizacionId' 
-});
+  foreignKey: 'areaId' 
+}); 
 
-kit.belongsToMany(cotizacion, { 
+kit.belongsToMany(areaCotizacion, { 
   through: kitCotizacion, 
   foreignKey: 'kitId' 
-});
+}); 
 
 
-cotizacion.belongsToMany(producto, { 
+areaCotizacion.belongsToMany(producto, { 
   through: productoCotizacion, // Nombre de la tabla intermedia
-  foreignKey: 'cotizacionId' 
+  foreignKey: 'areaId' 
 });
 
-producto.belongsToMany(cotizacion, { 
+producto.belongsToMany(areaCotizacion, { 
   through: productoCotizacion, 
   foreignKey: 'productoId' 
 });
 
 
-areaCotizacion.belongsTo(cotizacion, {
+cotizacion.hasMany(areaCotizacion, {
   onDelete: 'CASCADE',
 }) 
-cotizacion.belongsTo(areaCotizacion);
+areaCotizacion.belongsTo(cotizacion);
 
+// Relación cotización y las notas e imagenes
+cotizacion.hasMany(notaCotizacion);
+notaCotizacion.belongsTo(cotizacion, {
+  foreignKey: 'cotizacionId'
+})
 
 // KITCOTIZACION
 areaCotizacion.hasMany(kitCotizacion)
@@ -289,7 +296,7 @@ armadoCotizacion.belongsTo(areaCotizacion)
 areaCotizacion.hasMany(productoCotizacion)
 productoCotizacion.belongsTo(areaCotizacion);
 
-// user.hasOne(cotizacion, {
+// user.hasOne(cotizacion, { 
 //   foreignKey: 'userId',
 //   onDelete: 'CASCADE'
 // });
@@ -310,16 +317,16 @@ kit.belongsToMany(armado, {
   foreignKey: 'kitId' 
 });
 
-cotizacion.belongsToMany(armado, { 
+areaCotizacion.belongsToMany(armado, { 
   through: armadoCotizacion, // Nombre de la tabla intermedia
-  foreignKey: 'cotizacionId' 
+  foreignKey: 'areaId' 
 }); 
 
-armado.belongsToMany(cotizacion, { 
+armado.belongsToMany(areaCotizacion, { 
   through: armadoCotizacion, 
   foreignKey: 'armadoId' 
-});
-  
+}); 
+
 
 
 cotizacion.hasMany(requisicion, {
@@ -327,7 +334,7 @@ cotizacion.hasMany(requisicion, {
 });
 
 requisicion.belongsTo(cotizacion);
-
+ 
 // ---------------------------
 // INVENTARIO Y COMPRAS 
 // ---------------------------

@@ -1,4 +1,4 @@
-const { cotizacion, kitCotizacion, armado, armadoCotizacion } = require('../../db/db');
+const { cotizacion, kitCotizacion, armado, armadoCotizacion, productoCotizacion } = require('../../db/db');
 
 // Crear cotizacion
 const createCotizacion = async (clientId, name, description, time, fechaAprobada, price, descuento, iva) => {
@@ -28,12 +28,12 @@ const createCotizacion = async (clientId, name, description, time, fechaAprobada
 }
 
 // Agregar item cotización
-const addItemToCotizacionServices = async(cotizacionId, kitId, cantidad, precio, descuento) => {
+const addItemToCotizacionServices = async(cotizacionId, kitId, cantidad,  precio, descuento) => {
  
     
     const searchItemOnCoti = await kitCotizacion.findOne({
         where: {
-            cotizacionId,
+            areaId:cotizacionId,
             kitId
         }
     }).catch(err => null);
@@ -41,11 +41,11 @@ const addItemToCotizacionServices = async(cotizacionId, kitId, cantidad, precio,
     if(searchItemOnCoti) return 200
     // Caso contrario, permita que se cree
     const addItemToCoti = await kitCotizacion.create({
-        cotizacionId,
         cantidad,
         precio,
         descuento: descuento,
         kitId,
+        areaId: cotizacionId
     }).catch(err => {
         console.log(err);
         return null;
@@ -58,7 +58,7 @@ const addItemToCotizacionServices = async(cotizacionId, kitId, cantidad, precio,
 const addSuperKitToCotizacionServices = async(cotizacionId, armadoId, cantidad, precio, descuento) => {
     const searchItemOnCoti = await armadoCotizacion.findOne({
         where: {
-            cotizacionId,
+            areaId: cotizacionId,
             armadoId
         }
     }).catch(err => null);
@@ -66,7 +66,7 @@ const addSuperKitToCotizacionServices = async(cotizacionId, armadoId, cantidad, 
     if(searchItemOnCoti) return 200
     // Caso contrario, permita que se cree
     const addItemToCoti = await armadoCotizacion.create({
-        cotizacionId,
+        areaId: cotizacionId,
         cantidad,
         precio,
         descuento: descuento,
@@ -79,9 +79,35 @@ const addSuperKitToCotizacionServices = async(cotizacionId, armadoId, cantidad, 
     return addItemToCoti;
 }
 
+// Agregar producto a cotización
+const addProductoToCotizacionServices = async(cotizacionId, productoId, cantidad, precio, descuento) => {
+    const searchItemOnCoti = await productoCotizacion.findOne({
+        where: {
+            areaId: cotizacionId,
+            productoId
+        }
+    }).catch(err => null);
+
+    if(searchItemOnCoti) return 200
+    // Caso contrario, permita que se cree
+    const addItemToCoti = await productoCotizacion.create({
+        areaId: cotizacionId,
+        cantidad,
+        precio,
+        descuento: descuento,
+        productoId,
+    }).catch(err => {
+        console.log(err);
+        return null;
+    }); 
+    if(!addItemToCoti) return 502
+    return addItemToCoti;
+}
+
 // Exportación
 module.exports = {
     createCotizacion,
     addItemToCotizacionServices,
-    addSuperKitToCotizacionServices
+    addSuperKitToCotizacionServices,
+    addProductoToCotizacionServices
 }

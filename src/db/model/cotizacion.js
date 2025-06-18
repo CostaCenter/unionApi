@@ -7,7 +7,7 @@ module.exports = sequelize => {
             type: DataTypes.STRING 
         },
         description: {
-            type: DataTypes.STRING 
+            type: DataTypes.TEXT 
         },
         time: {
             type: DataTypes.DATE

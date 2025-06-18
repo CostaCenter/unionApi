@@ -1,9 +1,14 @@
 const express = require('express');
-const { client, kit, materia, cotizacion, armado, armadoCotizacion, kitCotizacion, user } = require('../db/db');
+const { client, kit, producto, materia, cotizacion, notaCotizacion, armado, armadoCotizacion, kitCotizacion, productoCotizacion, areaCotizacion, user, db} = require('../db/db');
 const { Op } = require('sequelize');
-const { createCotizacion, addItemToCotizacionServices, addSuperKitToCotizacionServices } = require('./services/cotizacionServices');
+const { createCotizacion, addItemToCotizacionServices, addSuperKitToCotizacionServices, addProductoToCotizacionServices } = require('./services/cotizacionServices');
 const { createRequisicion } = require('./services/requsicionService');
 const dayjs = require('dayjs');
+const multer = require('multer');
+
+const cloudinary = require('cloudinary').v2;
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 // Buscar cliente para cotizacion
 const searchClientQuery = async(req, res) => {
@@ -40,21 +45,36 @@ const searchClientQuery = async(req, res) => {
 const getAllCotizaciones = async(req, res) => {
     try{
         const searchCotizaciones = await cotizacion.findAll({
-            include: [{
-                model: kit,
-                include:[{
-                    model: materia,
-                    attributes: { exclude: ['createdAt', 'updatedAt']}
-                }],
-                through: {
-                    attributes: ['id', 'cantidad', 'precio', 'descuento'] // o los campos que tengas en KitCotizacion
-                }
-            }, {
-                model: client
-            }, {
-                model: armado
-            }], 
-            order:[['createdAt', 'DESC']]
+            include: [
+                {
+                    model: areaCotizacion,
+                    include:[{
+                        model: kit,
+                        include:[{
+                            model: materia,
+                            attributes: { exclude: ['createdAt', 'updatedAt']}
+                        }], 
+                        through: {
+                            attributes: ['id', 'cantidad', 'precio', 'descuento', 'areaCotizacionId'] // o los campos que tengas en KitCotizacion
+                        }
+                    }, { 
+                        model: armado
+                    }, {
+                        model: producto,
+                        through: {
+                            attributes: ['id', 'cantidad', 'precio', 'descuento', 'areaCotizacionId'] // o los campos que tenga productoCotizacion
+                        }
+                    }] 
+                }, 
+                {
+                    model: client
+            }, { model: notaCotizacion}], 
+            order: [
+                ['createdAt', 'DESC'], // Orden global por creación de la cotización
+                [notaCotizacion, 'createdAt', 'ASC'], // 👈 Orden solo para las notas
+                [areaCotizacion, 'createdAt', 'DESC'], // 👈 Orden solo para las notas
+
+            ]
         }).catch(err => {
             console.log(err);
             return null
@@ -79,17 +99,27 @@ const getCotizacion = async(req, res) => {
         // Caso contrario, consultados
         const searchCoti = await cotizacion.findByPk(cotiId, {
             attributes: { exclude: ['updatedAt']},
-            include:[{model: client},{
-                model: kit,
-                include:[{
-                    model: materia
-                }],
-                through: {
-                    attributes: ['id', 'cantidad', 'precio', 'descuento'] // o los campos que tengas en KitCotizacion
-                }
-            }, {
-                model: armado,
-            }]
+            include:[ {model: areaCotizacion,
+                include:[{ 
+                    model: kit,
+                    include:[{
+                        model: materia
+                    }],
+                    through: {
+                        attributes: ['id', 'cantidad', 'precio', 'descuento', 'areaCotizacionId'] // o los campos que tengas en KitCotizacion
+                    }
+                }, {
+                    model: armado,
+                }, {
+                    model: producto
+                }]
+            }, {model: client}, { model: notaCotizacion}],
+            order: [
+                ['createdAt', 'DESC'], // Orden global por creación de la cotización
+                [notaCotizacion, 'createdAt', 'ASC'], // 👈 Orden solo para las notas
+                [areaCotizacion, 'createdAt', 'DESC'], // 👈 Orden solo para las notas
+            
+            ]
         }).catch(err => {
             console.log(err);
             return null;
@@ -112,7 +142,7 @@ const newCotizacion = async (req, res) => {
         const { clientId, name, description, time, fechaAprobada, price, descuento, iva, } = req.body;
         
         // Validamos 
-        if(!clientId || !name || !description || !time) return res.status(501).json({msg: 'Los parámetros no son validos.'});
+        if(!clientId || !name || !time) return res.status(501).json({msg: 'Los parámetros no son validos.'});
          
         // Procedemos a crear cotización
         const add = await createCotizacion(clientId, name, description, time, fechaAprobada, price, descuento, iva)
@@ -134,14 +164,14 @@ const newCotizacion = async (req, res) => {
 const addItemToCotizacion = async(req, res) => {
     try{
         // Recibimos datos por body.
-        const { cotizacionId, kitId, cantidad, precio, descuento } = req.body;
+        const { cotizacionId, kitId, cantidad, areaId, precio, descuento } = req.body;
         // Validamos que los datos entren correctamente
         if(!cotizacionId || !kitId || !cantidad || !precio ) return res.status(501).json({msg: 'Los parámetros no son validos.'});
         // Caso contrario, avanzamos...
 
         const sendItem = await addItemToCotizacionServices(cotizacionId, kitId, cantidad, precio, descuento)
         .catch(err => {
-            console.log(err);
+            console.log(err); 
             return null;
         });
         if(sendItem == 200) return res.status(200).json({msg: 'Ya existe este kit dentro de la cotización.'}); 
@@ -244,6 +274,32 @@ const addSuperKit = async(req, res) => {
     }
 }
 
+// Agregar producto terminado a la cotización
+const addProducto = async(req, res) => {
+    try{
+        // Recibimos datos por body 
+        const { cotizacionId, productoId, cantidad, precio, descuento } = req.body; // Destructuramos
+    
+        // Validamos la entrada de parámetros
+        if(!cotizacionId || !productoId || !cantidad || !precio) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        
+        // Enviamos petición asincrónica - Consultando una función services. Del Archivo cotizacionServices.js
+        // Pasamos la cotización, el superKit, la cantidad, el precio y un descuento si tiene.
+        const sendItem = await addProductoToCotizacionServices(cotizacionId, productoId, cantidad, precio, descuento)
+        .catch(err => {
+            console.log(err);
+            return null;
+        });
+        if(sendItem == 200) return res.status(200).json({msg: 'Ya existe este superKit dentro de la cotización.'}); 
+        if(!sendItem || sendItem == 502) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+        // Caso contrario, enviamos la creación
+        res.status(201).json(sendItem);
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
 // Actualizar item de una cotización
 const updateItemToCotizacion = async(req, res) => {
     try{
@@ -259,7 +315,7 @@ const updateItemToCotizacion = async(req, res) => {
         }, {
             where: {
                 kitId,
-                cotizacionId,
+                areaId: cotizacionId,
             }
         });
 
@@ -281,12 +337,14 @@ const deleteKitOnCotizacion = async (req, res) => {
         // Caso contrario, avanzamos...
 
         const searchKit = await kit.findByPk(kitId).catch(err => null);
-        const searchCotizacion = await cotizacion.findByPk(cotizacionId).catch(err => null)
+        const searchCotizacion = await areaCotizacion.findByPk(cotizacionId).catch(err => null)
         if(!searchKit || !searchCotizacion) return res.status(404).json({msg: 'No hemos encontrado esto.'});
         
         // Caso contrario, eliminamos.
 
-        const deletee = await searchKit.removeCotizacion(searchCotizacion).catch(err => null);
+        const deletee = await searchKit.removeAreaCotizacion(searchCotizacion).catch(err => {
+            console.log(err)
+        });
         if(!deletee) return res.status(502).json({msg: 'No hemos logrado eliminar esto'});
 
         res.status(200).json({msg: 'Eliminado con éxito'})
@@ -305,12 +363,12 @@ const deleteSuperKitOnCotizacion = async (req, res) => {
         // Caso contrario, avanzamos...
 
         const searchKit = await armado.findByPk(superKidId).catch(err => null);
-        const searchCotizacion = await cotizacion.findByPk(cotizacionId).catch(err => null)
+        const searchCotizacion = await areaCotizacion.findByPk(cotizacionId).catch(err => null)
         if(!searchKit || !searchCotizacion) return res.status(404).json({msg: 'No hemos encontrado esto.'});
         
         // Caso contrario, eliminamos.
 
-        const deletee = await searchKit.removeCotizacion(searchCotizacion).catch(err => null);
+        const deletee = await searchKit.removeAreaCotizacion(searchCotizacion).catch(err => null);
         if(!deletee) return res.status(502).json({msg: 'No hemos logrado eliminar esto'});
 
         res.status(200).json({msg: 'Eliminado con éxito'})
@@ -363,9 +421,267 @@ const acceptCotizacion = async (req, res) => {
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
     }
+} 
+
+// Dividir cotización por áreas
+const addAreaToCotizacion = async (req, res) =>  {
+    try{ 
+        // Recbimos datos por body
+        const { cotizacionId, name, description, userId } = req.body;
+        // Validamos que entren los parámetros
+        if(!cotizacionId || !name || !userId) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        // Caso contrario, avanzamos...
+
+        // Procedemos a consultar cotizacion
+        const searchCoti = await cotizacion.findByPk(cotizacionId, {
+            where: {
+                state: 'desarrollo'
+            }
+        })
+
+        // Validamos la existencia.
+        if(!searchCoti) return res.status(404).json({msg: 'No hemos encontrado esto.'});
+        // Caso contrario, avanzamos
+        const addArea = await areaCotizacion.create({
+            name,
+            description,
+            state: true,
+            cotizacionId
+        })
+        // Validamos respuesta
+        if(!addArea) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+        // Caso contrario, avanzamos
+        res.status(200).json(addArea);
+        
+        
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+// Editar
+const editAreaToCotizacion = async (req, res) =>  {
+    try{ 
+        // Recbimos datos por body
+        const { cotizacionId, areaId, name, state, description, userId } = req.body;
+        // Validamos que entren los parámetros
+        if(!cotizacionId || !areaId || !name || !userId) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        // Caso contrario, avanzamos...
+
+        // Procedemos a consultar cotizacion
+        const searchCoti = await cotizacion.findByPk(cotizacionId, {
+            where: {
+                state: 'desarrollo'
+            }
+        })
+
+        // Validamos la existencia.
+        if(!searchCoti) return res.status(404).json({msg: 'No hemos encontrado esto.'});
+        // Caso contrario, avanzamos
+        const addArea = await areaCotizacion.update({
+            name,
+            description,
+            state,
+            cotizacionId
+        }, {
+            where: {
+                id: areaId
+            }
+        })
+        // Validamos respuesta
+        if(!addArea) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+        // Caso contrario, avanzamos
+        res.status(200).json(addArea);
+        
+        
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
 }
 
+// Clonar Área
+const clonarArea = async (req, res) => { 
+    try{
+        // Recibimos parametro por params
+        const { areaId , userId} = req.body;
+        if(!areaId) return res.status(501).json({msg: 'Invado el parámetro'})
+        // Definimos la transacción
+        const transaction = await db.transaction();
 
+        const kitOriginal = await areaCotizacion.findByPk(areaId, {
+            include:[{
+                model: kit,
+            }, { 
+                model: armado
+            }, {
+                model: producto,
+            }],
+            transaction
+        }).catch(err => {
+            console.log(err);
+            return null; 
+        });
+
+        // Validamos la existencia
+        if(!kitOriginal) {
+            await transaction.rollback();
+            return res.status(404).json({msg: 'No hemos encontrado este kit'});
+        }
+        // Caso contrario, avanzamos...
+
+        const nuevoKit = await areaCotizacion.create({
+            name: `${kitOriginal.name} - Copia`,
+            description: kitOriginal.description,
+            state: kitOriginal.state, 
+            cotizacionId: kitOriginal.cotizacionId,
+        }, { transaction }); 
+
+        if(!nuevoKit) { 
+            await transaction.rollback();
+            return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+        }
+
+        // Listamos la armados
+        const nuevosArmados = kitOriginal.armados?.map((mp) => ({
+            cantidad: mp.armadoCotizacion.cantidad,
+            descuento: mp.armadoCotizacion.descuento,
+            precio: mp.armadoCotizacion.precio,
+            armadoId: mp.id, 
+            areaId: nuevoKit.id
+        }));
+
+        // Listamos la armados
+        const nuevosKits = kitOriginal.kits?.map((mp) => ({
+            cantidad: mp.kitCotizacion.cantidad,
+            descuento: mp.kitCotizacion.descuento,
+            precio: mp.kitCotizacion.precio,
+            kitId: mp.id, 
+            areaId: nuevoKit.id
+        }));
+
+        // Listamos los productos
+        const nuevosProductos = kitOriginal.productos?.map((mp) => ({
+            cantidad: mp.productoCotizacion.cantidad,
+            descuento: mp.productoCotizacion.descuento,
+            precio: mp.productoCotizacion.precio,
+            productoId: mp.id, 
+            areaId: nuevoKit.id
+        }));
+        // Caso contrario
+        // Caso contrario, avanzamos
+        if(nuevosArmados.length > 0 || nuevosKits.length > 0 || nuevosProductos.length  > 0){
+            await armadoCotizacion.bulkCreate(nuevosArmados,  { transaction })
+            await kitCotizacion.bulkCreate(nuevosKits,  { transaction })
+            await productoCotizacion.bulkCreate(nuevosProductos,  { transaction })
+
+            // .then(async (res) => {
+            //     // Entidad, entidadId, accion, detalle, fecha, userId
+            //     const a = await addLog('kits', nuevoKit.id, 'create', 'Clonó este kit.', userId)
+            //     return res
+            // })
+            
+            await transaction.commit();
+            return res.status(201).json({msg: 'Área clonada con éxito!'});
+        }else{
+
+            await transaction.commit();
+
+            return res.status(201).json({msg: 'Área clonado con éxito (El área original no tenia items).'})
+        }
+    }catch(err){
+        if (transaction) {
+            try {
+                 await transaction.rollback();
+                 console.error('Rollback de transacción exitoso.');
+            } catch (rollbackErr) {
+                 console.error('Error haciendo rollback de la transacción:', rollbackErr);
+                 // Opcional: reportar este error de rollback si es crítico
+            }
+        }
+
+        console.error('Error en la funcion clonar Kit.', err);
+
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+// Eliminar
+const deleteAreaToCotizacion = async (req, res) =>  {
+    try{ 
+        // Recbimos datos por body
+        const { cotizacionId, areaId, userId } = req.body;
+        
+        // Validamos que entren los parámetros
+        if(!cotizacionId || !areaId || !userId) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        // Caso contrario, avanzamos...
+
+        // Procedemos a consultar cotizacion
+        const searchCoti = await cotizacion.findByPk(cotizacionId, {
+            where: {
+                state: 'desarrollo'
+            }
+        })
+
+        // Validamos la existencia.
+        if(!searchCoti) return res.status(404).json({msg: 'No hemos encontrado esto.'});
+        // Caso contrario, avanzamos
+        const addArea = await areaCotizacion.destroy({
+            where: {
+                id: areaId
+            }
+        })
+        // Validamos respuesta
+        if(!addArea) return res.status(502).json({msg: 'No hemos logrado eliminar esto.'});
+        // Caso contrario, avanzamos
+        res.status(200).json({msg: 'Eliminado con éxito'});
+        
+        
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}  
+ 
+// Agregar nota , imagen a cotizacion
+const addRegisterToCotizacion = async (req, res) => {
+    try{
+        // Recibimos variables por body
+        const { texto,  cotizacionId} = req.body;
+        // Validamos la entrada
+        if(!cotizacionId ) return res.status(501).json({msg: 'Los parámetros ingresado no son validos.'});
+        // Caso contrario, avanzamos...
+        if(req.file){
+            const result = await cloudinary.uploader.upload(
+                `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`, // Usando el buffer de memoryStorage
+                { folder: 'galeriaUnion' } // Opcional: especificar una carpeta
+            )
+    
+            // Creamos consulta para avanzar
+            const addNew = await notaCotizacion.create({
+                texto,
+                imagen: result.secure_url,
+                type: texto ? 'mixto' : 'imagen', 
+                cotizacionId
+            });
+
+            return res.status(201).json(addNew);
+        }else{
+            // Creamos consulta para avanzar
+            const addNew = await notaCotizacion.create({
+                texto,
+                type: 'texto', 
+                cotizacionId
+            });
+            return res.status(201).json(addNew);
+        }
+         
+        
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
 module.exports = { 
     getCotizacion, // Obtenemos una cotización por su Id
     newCotizacion, // Crear una nueva cotización
@@ -379,4 +695,10 @@ module.exports = {
     deleteSuperKitOnCotizacion, // Eliminar superKit Item
     giveDescuento, // Dar descuento a kitCotizacion
     giveDescuentoSuperKitItem, // Dar descuento a item SuperKit
+    addAreaToCotizacion, // Agregar área a la cotización
+    editAreaToCotizacion, // Editar área de la cotización
+    deleteAreaToCotizacion, // Eliminar área de la cotización
+    addProducto, // Agregar producto a cotización
+    clonarArea, // Clonar área de cotización
+    addRegisterToCotizacion, // Agregar nota
 }  
