@@ -14,8 +14,8 @@ router.route('/search')
     .get(searchClientQuery)
 
 router.route('/getAll/:userId')
-    .get(getAllCotizaciones) 
-    
+    .get(getAllCotizaciones)   
+
 router.route('/get/:cotiId')
     .get(getCotizacion)
 router.route('/new')

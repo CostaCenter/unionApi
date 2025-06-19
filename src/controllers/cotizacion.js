@@ -49,7 +49,7 @@ const getAllCotizaciones = async(req, res) => {
             where: {
                 userId
             },
-            include: [
+            include: [ 
                 {
                     model: areaCotizacion,
                     include:[{
