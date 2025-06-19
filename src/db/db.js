@@ -245,6 +245,7 @@ log.belongsTo(user)
 // CLIENTES Y COTIZACIÓN
 // -----------------------
 
+
 // Relación uno a muchos
 client.hasMany(cotizacion, {
   foreignKey: 'clientId', // Clave foránea en la tabla contact
@@ -252,6 +253,13 @@ client.hasMany(cotizacion, {
 });
 cotizacion.belongsTo(client); 
 
+// // Relación uno a muchos - Usuario
+user.hasMany(cotizacion, {
+  foreignKey: 'userId', // Clave foránea en la tabla contact
+  onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
+}); 
+cotizacion.belongsTo(user); 
+ 
 // Relación Muchos a muchos
 areaCotizacion.belongsToMany(kit, { 
   through: kitCotizacion, // Nombre de la tabla intermedia

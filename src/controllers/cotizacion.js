@@ -1,5 +1,5 @@
 const express = require('express');
-const { client, kit, producto, materia, cotizacion, notaCotizacion, armado, armadoCotizacion, kitCotizacion, productoCotizacion, areaCotizacion, user, db} = require('../db/db');
+const { client, kit, extension, producto, materia, cotizacion, notaCotizacion, armado, armadoCotizacion, kitCotizacion, productoCotizacion, areaCotizacion, user, db} = require('../db/db');
 const { Op } = require('sequelize');
 const { createCotizacion, addItemToCotizacionServices, addSuperKitToCotizacionServices, addProductoToCotizacionServices } = require('./services/cotizacionServices');
 const { createRequisicion } = require('./services/requsicionService');
@@ -53,7 +53,7 @@ const getAllCotizaciones = async(req, res) => {
                         include:[{
                             model: materia,
                             attributes: { exclude: ['createdAt', 'updatedAt']}
-                        }], 
+                        }, {model: extension}], 
                         through: {
                             attributes: ['id', 'cantidad', 'precio', 'descuento', 'areaCotizacionId'] // o los campos que tengas en KitCotizacion
                         }
@@ -68,7 +68,7 @@ const getAllCotizaciones = async(req, res) => {
                 }, 
                 {
                     model: client
-            }, { model: notaCotizacion}], 
+            }, { model: notaCotizacion}, {model: user}], 
             order: [
                 ['createdAt', 'DESC'], // Orden global por creación de la cotización
                 [notaCotizacion, 'createdAt', 'ASC'], // 👈 Orden solo para las notas
@@ -104,7 +104,7 @@ const getCotizacion = async(req, res) => {
                     model: kit,
                     include:[{
                         model: materia
-                    }],
+                    },{model: extension}],
                     through: {
                         attributes: ['id', 'cantidad', 'precio', 'descuento', 'areaCotizacionId'] // o los campos que tengas en KitCotizacion
                     }
@@ -113,7 +113,7 @@ const getCotizacion = async(req, res) => {
                 }, {
                     model: producto
                 }]
-            }, {model: client}, { model: notaCotizacion}],
+            }, {model: client}, { model: notaCotizacion}, {model: user}],
             order: [
                 ['createdAt', 'DESC'], // Orden global por creación de la cotización
                 [notaCotizacion, 'createdAt', 'ASC'], // 👈 Orden solo para las notas
