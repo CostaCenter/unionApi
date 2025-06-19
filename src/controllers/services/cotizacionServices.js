@@ -1,11 +1,12 @@
 const { cotizacion, kitCotizacion, armado, armadoCotizacion, productoCotizacion } = require('../../db/db');
 
 // Crear cotizacion
-const createCotizacion = async (clientId, name, description, time, fechaAprobada, price, descuento, iva) => {
+const createCotizacion = async (userId, clientId, name, description, time, fechaAprobada, price, descuento, iva) => {
     try{
 
         // Generamos la función para crear
         const createCotizacion = await cotizacion.create({
+            userId,
             clientId,
             name,
             description, 

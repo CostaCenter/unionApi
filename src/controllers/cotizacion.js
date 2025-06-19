@@ -139,13 +139,13 @@ const getCotizacion = async(req, res) => {
 const newCotizacion = async (req, res) => {
     try{
         
-        const { clientId, name, description, time, fechaAprobada, price, descuento, iva, } = req.body;
+        const { userId, clientId, name, description, time, fechaAprobada, price, descuento, iva, } = req.body;
         
         // Validamos 
-        if(!clientId || !name || !time) return res.status(501).json({msg: 'Los parámetros no son validos.'});
+        if(!userId || !clientId || !name || !time) return res.status(501).json({msg: 'Los parámetros no son validos.'});
          
         // Procedemos a crear cotización
-        const add = await createCotizacion(clientId, name, description, time, fechaAprobada, price, descuento, iva)
+        const add = await createCotizacion(userId, clientId, name, description, time, fechaAprobada, price, descuento, iva)
         .catch(err => {
             console.log(err);
             return null;
