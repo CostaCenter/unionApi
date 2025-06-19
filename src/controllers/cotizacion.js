@@ -44,7 +44,11 @@ const searchClientQuery = async(req, res) => {
 // Obtener Cotizaciones
 const getAllCotizaciones = async(req, res) => {
     try{
+        const { userId } = req.params;
         const searchCotizaciones = await cotizacion.findAll({
+            where: {
+                userId
+            },
             include: [
                 {
                     model: areaCotizacion,

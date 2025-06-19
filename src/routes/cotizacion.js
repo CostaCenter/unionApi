@@ -13,8 +13,9 @@ const router = express.Router();
 router.route('/search')
     .get(searchClientQuery)
 
-router.route('/getAll/')
+router.route('/getAll/:userId')
     .get(getAllCotizaciones) 
+    
 router.route('/get/:cotiId')
     .get(getCotizacion)
 router.route('/new')
