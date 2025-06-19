@@ -55,7 +55,6 @@ const searchKitsForCoti = async (req, res) => {
                 model: extension
             }],
             attributes: { exclude: ['createdAt', 'updatedAt'] },
-            limit: 15, // Máximo 10 resultados para eficiencia
         }).catch((err => {
             console.log(err);
             return null;
