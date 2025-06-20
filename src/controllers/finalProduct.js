@@ -1,5 +1,5 @@
 const express = require('express');
-const { producto, productPrice, proveedor, price, linea, categoria } = require('../db/db');
+const { producto, productPrice, percentage, proveedor, price, linea, categoria } = require('../db/db');
 const { Op } = require('sequelize');
 const { searchPrice, addPriceMt, updatePriceState, searchProductPrice, updateProductPriceState, addPricePT,  } = require('./services/priceServices');
 
@@ -22,7 +22,15 @@ const buscarPorQueryProducto = async (req, res) => {
                 state: 'active'
             }
         },{
-            model: linea
+            model: linea,
+            include:[{
+                model: percentage,
+                where: {
+                    state: 'active'
+                },
+                required:false
+            
+            }]
         }, {
             model: categoria
         }]
