@@ -215,7 +215,7 @@ const getAllKit = async(req, res) => {
                 attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'state'] }
 
             }] ,
-            order:[['createdAt', 'DESC']]
+            order:[['name', 'ASC']]
         }).catch(err => {
             console.log(err)
             return null

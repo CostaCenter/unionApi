@@ -12,6 +12,14 @@ module.exports = sequelize => {
         description: {
             type: DataTypes.STRING
         },
+        // Tabla o contexto
+        distribuidor : {
+            type: DataTypes.DECIMAL
+        },
+        // Porcentaje final
+        final: {
+            type: DataTypes.DECIMAL 
+        },
         // Estado... Activo o innactivo
         state: {
             type: DataTypes.STRING

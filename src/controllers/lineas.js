@@ -8,8 +8,12 @@ const { addLog } = require('./services/logServices');
 // GET ALL
 const getAllFiltros = async(req, res) => {
     try{
-        const searchLineas = await linea.findAll().catch(err => null);
-        const searchCategoria = await categoria.findAll().catch(err => null);
+        const searchLineas = await linea.findAll({
+            order:[['name', 'ASC']]
+        }).catch(err => null);
+        const searchCategoria = await categoria.findAll({
+            order:[['name', 'ASC']]
+        }).catch(err => null);
         const searchExtension = await extension.findAll().catch(err => null);
 
         const filtros = {

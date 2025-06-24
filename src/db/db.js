@@ -20,6 +20,7 @@ const modelItemKit = require('./model/itemKit'); // Item.
 
 const modelClient = require('./model/client'); // Cliente
 const modelCotizacion = require('./model/cotizacion'); // Cotización
+const modelVersionCotizacion = require('./model/cotizacionVersion'); // Versión de las cotizaciones
 const modelNotasCotizacion = require('./model/notasCotización'); // Notas cotización
 const modelAreaCotizacion = require('./model/areaCotizacion');
 const modelKitCotizacion = require('./model/kitCotizacion');
@@ -89,6 +90,7 @@ modelItemKit(sequelize);
 // CLIENTE Y COTIZACIÓN
 modelClient(sequelize);
 modelCotizacion(sequelize);
+modelVersionCotizacion(sequelize);
 modelNotasCotizacion(sequelize);
 modelAreaCotizacion(sequelize);
 modelKitCotizacion(sequelize);
@@ -112,7 +114,7 @@ modelUserPermission(sequelize);
 
 
 const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, itemKit,
-  client, cotizacion, notaCotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
+  client, versionCotizacion, cotizacion, notaCotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
   permission, user_permission, areaCotizacion, productoCotizacion
 } = sequelize.models; 
 
@@ -252,6 +254,9 @@ client.hasMany(cotizacion, {
   onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
 });
 cotizacion.belongsTo(client); 
+
+versionCotizacion.hasMany(cotizacion); // VersionCotización contiene muchas cotizaciones
+cotizacion.belongsTo(versionCotizacion);  // Relacionamos la cotizacion con versiones.
 
 // // Relación uno a muchos - Usuario
 user.hasMany(cotizacion, {

@@ -27,6 +27,10 @@ module.exports = sequelize => {
         // Aprobada , Espera , Perdida
         state: {
             type: DataTypes.STRING
-        } 
+        },
+        // Version
+        version: {
+            type: DataTypes.STRING
+        }
     })  
 }

@@ -1,5 +1,5 @@
 const express = require('express');
-const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion } = require('../controllers/cotizacion');
+const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion } = require('../controllers/cotizacion');
 const multer = require('multer');
 
  
@@ -21,6 +21,14 @@ router.route('/get/:cotiId')
 router.route('/new')
     .post(newCotizacion);
 
+router.route('/version/new')
+    .post(newVersionAboutCotizacion)
+router.route('/version/updateToOficial')
+    .put(beOfficialVersion)
+
+router.route('/remove/cotizacion')
+    .delete(deleteCotizacion) 
+
 // Agregar nota  
 router.route('/post/register/new')
     .post(
@@ -31,7 +39,7 @@ router.route('/add/item')
     .post(addItemToCotizacion)
     .put(updateItemToCotizacion)
 
-router.route('/add/superKit/item')
+router.route('/add/superKit/item') 
     .post(addSuperKit)
 
 router.route('/remove/item')
@@ -57,6 +65,9 @@ router.route('/superKit/descuento')
 // PRODUCTO
 router.route('/add/producto/item')
     .post(addProducto)
+
+router.route('/producto/descuento')
+    .put(giveDescuentoProducto)
  
 // router.route('/remove/item')
 //     .delete(deleteKitOnCotizacion)

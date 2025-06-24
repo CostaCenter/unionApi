@@ -1,5 +1,5 @@
 const express = require('express');
-const { producto, productPrice, percentage, proveedor, price, linea, categoria } = require('../db/db');
+const { producto, productPrice, percentage, proveedor, price, linea, categoria, db } = require('../db/db');
 const { Op } = require('sequelize');
 const { searchPrice, addPriceMt, updatePriceState, searchProductPrice, updateProductPriceState, addPricePT,  } = require('./services/priceServices');
 
@@ -160,13 +160,44 @@ const addProductoTerminado = async(req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
     }
 }
+// Eliminar Cotización
+const deleteProducto = async (req, res) =>  {
+    try{ 
+        // Recbimos datos por body
+        const { productoId, userId } = req.body;
+        
+        // Validamos que entren los parámetros
+        if(!productoId || !userId) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        // Caso contrario, avanzamos...
 
+        // Procedemos a consultar cotizacion
+        const searchProducto = await producto.findByPk(productoId)
+
+        // Validamos la existencia.
+        if(!searchProducto) return res.status(404).json({msg: 'No hemos encontrado esto.'});
+        // Caso contrario, avanzamos
+        const deleteProducto = await producto.destroy({
+            where: {
+                id: productoId
+            }
+        })
+        // Validamos respuesta
+        if(!deleteProducto) return res.status(502).json({msg: 'No hemos logrado eliminar esto.'});
+        // Caso contrario, avanzamos
+        res.status(200).json({msg: 'Eliminado con éxito'});
+        
+        
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+} 
 
 // Actualizar item
 const updateProducto = async(req, res) => {
     try{
         // Recibimos datos por body
-        const { itemId, item, description, peso, volumen, procedencia, criticidad, lineaId, categoriaId} = req.body;
+        const { itemId, item, description, medida, unidad, peso, volumen, procedencia, criticidad, lineaId, categoriaId} = req.body;
 
         // Validamos que los datos entren correctamente
         if(!itemId) return res.status(501).json({msg: 'Parámetro invalido.'});
@@ -184,7 +215,9 @@ const updateProducto = async(req, res) => {
         const updateItem = await producto.update({
             item,
             description,
-            peso,
+            medida, 
+            unidad,
+            peso, 
             volumen,
             procedencia,
             criticidad,
@@ -207,6 +240,68 @@ const updateProducto = async(req, res) => {
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
+// Clonar PRODUCTO
+const clonarProducto = async (req, res) => { 
+    try{ 
+        // Recibimos parametro por params
+        const { productoId , userId} = req.params;
+        if(!productoId) return res.status(501).json({msg: 'Invado el parámetro'})
+        // Definimos la transacción
+        const transaction = await db.transaction();
+
+        const productoOriginal = await producto.findByPk(productoId, {
+            transaction
+        }).catch(err => {
+            console.log(err);
+            return null; 
+        });
+
+        // Validamos la existencia
+        if(!productoOriginal) {
+            await transaction.rollback();
+            return res.status(404).json({msg: 'No hemos encontrado este kit'});
+        }
+        // Caso contrario, avanzamos...
+
+        const nuevoKit = await producto.create({
+            item: productoOriginal.item,
+            description: productoOriginal.description,
+            peso: productoOriginal.peso,
+            volumen: productoOriginal.volumen,
+            procedencia: productoOriginal.procendencia,
+            criticidad: productoOriginal.criticidad,
+            medida: productoOriginal.medida,
+            unidad: productoOriginal.unidad,
+            lineaId: productoOriginal.lineaId, 
+            categoriumId: productoOriginal.categoriumId,
+
+        }, { transaction }); 
+
+        if(!nuevoKit) { 
+            await transaction.rollback();
+            return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+        }
+
+        await transaction.commit();
+        return res.status(201).json({msg: 'Kit clonado con éxito!'});
+       
+    }catch(err){
+        if (transaction) {
+            try {
+                 await transaction.rollback();
+                 console.error('Rollback de transacción exitoso.');
+            } catch (rollbackErr) {
+                 console.error('Error haciendo rollback de la transacción:', rollbackErr);
+                 // Opcional: reportar este error de rollback si es crítico
+            }
+        }
+
+        console.error('Error en la funcion clonar producto.', err);
+
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
 
@@ -275,6 +370,8 @@ const addPriceProducto = async(req, res) => {
 module.exports = { 
     addProductoTerminado, // Agregar producto terminado
     updateProducto, // Actualiza Producto
+    deleteProducto, // Eliminar producto
+    clonarProducto, // Clonar producto
     getAllProducto, // Obtener todos los productos
     getItemProducto, // Obtener item por ID
     addPriceProducto, // Agregamos precio
