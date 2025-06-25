@@ -1,5 +1,5 @@
 const express = require('express');
-const { materia, proveedor, price, linea, categoria } = require('../db/db');
+const { materia, proveedor, price, linea, categoria, db } = require('../db/db');
 const { Op } = require('sequelize');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 
@@ -44,7 +44,6 @@ const getItem = async (req, res) => {
                 where: {
                     state: 'active'
                 },
-                attributes:['id', 'valor', 'iva', 'descuentos', 'state', 'createdAt'],
                 include: [{
                     model: proveedor,
                     attributes:['id', 'type', 'nit', 'nombre']
@@ -200,6 +199,119 @@ const updateMateria = async(req, res) => {
     }
 }
 
+// Clonar mt
+const clonarMateriaPrima = async (req, res) => { 
+     const transaction = await db.transaction();
+
+    try{ 
+        // Recibimos parametro por params
+        const { MPID , userId} = req.body;
+        if(!MPID) return res.status(501).json({msg: 'Invado el parámetro'})
+        // Definimos la transacción
+
+        const MpOriginal = await materia.findByPk(MPID, {
+            include: [{
+                model: price,
+            }]
+        }, {
+            transaction
+        }).catch(err => {
+            console.log(err);
+            return null; 
+        });
+
+        // Validamos la existencia
+        if(!MpOriginal) {
+            await transaction.rollback();
+            return res.status(404).json({msg: 'No hemos encontrado este kit'});
+        }
+        // Caso contrario, avanzamos...
+
+        const nuevoMateria = await materia.create({
+            item: MpOriginal.item,
+            description: MpOriginal.description,
+            peso: MpOriginal.peso,
+            volumen: MpOriginal.volumen,
+            procedencia: MpOriginal.procendencia,
+            criticidad: MpOriginal.criticidad,
+            medida: MpOriginal.medida,
+            unidad: MpOriginal.unidad,
+            lineaId: MpOriginal.lineaId, 
+            categoriumId: MpOriginal.categoriumId,
+
+        }, { transaction }); 
+
+        if(!nuevoMateria) { 
+            await transaction.rollback();
+            return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+        }
+
+        // Listamos la materia
+        const precio = MpOriginal.prices.map((pric) => ({
+            valor: String(pric.valor),
+            iva: pric.iva,
+            descuentos: pric.descuentos,
+            materiumId: nuevoMateria.id,
+            proveedorId: pric.proveedorId,
+            state: String(pric.state),
+        }));
+        // Caso contrario
+        // Caso contrario, avanzamos
+        if(precio.length > 0){
+            await price.bulkCreate(precio,  { transaction })
+            .then((res) =>  {
+                return true
+            })
+
+            await transaction.commit();
+            return res.status(201).json({msg: 'Kit clonado con éxito!'});
+        }else{
+
+            await transaction.commit();
+
+            return res.status(201).json({msg: 'Kit clonado con éxito (El Kit original no tenia items).'})
+        }
+       
+    }catch(err){
+        if (transaction) {
+            try {
+                 await transaction.rollback();
+                 console.error('Rollback de transacción exitoso.');
+            } catch (rollbackErr) {
+                 console.error('Error haciendo rollback de la transacción:', rollbackErr);
+                 // Opcional: reportar este error de rollback si es crítico
+            }
+        }
+
+        console.error('Error en la funcion clonar producto.', err);
+
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+// Eliminar Kit
+const deleteMP = async(req, res) => {
+    try{
+        const { materiaId, userId } = req.body;
+
+        if(!materiaId) return res.status(501).json({msg: 'El parámetro no es valido.'});
+        // Caso contrario, avanzamos
+
+        const materiaAEliminar = await materia.findByPk(materiaId).catch(err => null);
+        // Validamos
+        if(!materiaAEliminar) return res.status(404).json({msg: 'No hemos encontrado este kit.'});
+        
+        const sendRemove = await materiaAEliminar.destroy()
+
+        if(!sendRemove) return res.state(502).json({msg: 'No hemos logrado eliminar esto'});
+        // Caso contrario, avanzamos
+        res.status(200).json({msg: 'Eliminado con éxito'});
+
+    }catch(err){    
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
 
 // Agregar un precio según proveedor a MT
 const addPriceMateriaPrima = async(req, res) => {
@@ -268,7 +380,9 @@ module.exports = {
     buscarPorQuery, // Buscador
     getItem, // Obtener item individual
     getAllMateria, // Obtener todos los registros de la tabla. Sin filtros**
-    addMateria, // Agregar matería al sistema.   
+    addMateria, // Agregar matería al sistema. 
+    clonarMateriaPrima, // Clonar item  
+    deleteMP, // Eliminar MP
     updateMateria, // Actualizar item
     addPriceMateriaPrima, // Agregar precio
 }

@@ -1,5 +1,5 @@
 const express = require('express');
-const { addMateria, updateMateria, getAllMateria, getItem, buscarPorQuery } = require('../controllers/materiaControllers');
+const { addMateria, updateMateria, getAllMateria, getItem, buscarPorQuery, clonarMateriaPrima, deleteMP } = require('../controllers/materiaControllers');
 const { getAllProducto, addProductoTerminado, updateProducto, getItemProducto, buscarPorQueryProducto, deleteProducto, clonarProducto } = require('../controllers/finalProduct');
 
 const router = express.Router();
@@ -17,8 +17,12 @@ router.route('/new')
     .post(addMateria)
     .put(updateMateria)
 
+router.route('/materia/clone')
+    .post(clonarMateriaPrima)
 
- 
+router.route('/materia/remove')
+    .delete(deleteMP)
+    
 // PRODUCTO
 router.route('/producto/search')
     .get(getAllProducto) 
