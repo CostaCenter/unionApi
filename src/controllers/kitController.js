@@ -1,5 +1,5 @@
 const express = require('express');
-const { materia, proveedor, extension, price, kit, itemKit, linea, categoria, percentage, Op, db} = require('../db/db');
+const { materia, proveedor, extension, price, kit, itemKit, linea, categoria, percentage, Op, db, literal} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 const { addLog } = require('./services/logServices');
@@ -55,9 +55,10 @@ const searchKitsForCoti = async (req, res) => {
                 model: extension
             }],
             attributes: { exclude: ['createdAt', 'updatedAt'] },
+            
         }).catch((err => {
             console.log(err);
-            return null;
+            return null; 
         }));
 
         if(!kits) return res.status(404).json({msg: 'No encontrado'})

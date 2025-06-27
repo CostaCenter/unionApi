@@ -647,14 +647,14 @@ const addSuperKit = async(req, res) => {
 const addProducto = async(req, res) => {
     try{
         // Recibimos datos por body 
-        const { cotizacionId, productoId, cantidad, precio, descuento } = req.body; // Destructuramos
+        const { cotizacionId, productoId, cantidad, precio, descuento, medida } = req.body; // Destructuramos
     
         // Validamos la entrada de parámetros
         if(!cotizacionId || !productoId || !cantidad || !precio) return res.status(400).json({msg: 'Los parámetros no son validos.'});
         
         // Enviamos petición asincrónica - Consultando una función services. Del Archivo cotizacionServices.js
         // Pasamos la cotización, el superKit, la cantidad, el precio y un descuento si tiene.
-        const sendItem = await addProductoToCotizacionServices(cotizacionId, productoId, cantidad, precio, descuento)
+        const sendItem = await addProductoToCotizacionServices(cotizacionId, productoId, cantidad, precio, descuento, medida)
         .catch(err => {
             console.log(err);
             return null;

@@ -1,5 +1,5 @@
 const express = require('express');
-const { producto, productPrice, percentage, proveedor, price, linea, categoria, db } = require('../db/db');
+const { producto, productPrice, percentage, proveedor, price, linea, categoria, db, literal } = require('../db/db');
 const { Op } = require('sequelize');
 const { searchPrice, addPriceMt, updatePriceState, searchProductPrice, updateProductPriceState, addPricePT,  } = require('./services/priceServices');
 
@@ -33,7 +33,7 @@ const buscarPorQueryProducto = async (req, res) => {
             }]
         }, {
             model: categoria
-        }]
+        }],
       });
   
       res.json(resultados);
