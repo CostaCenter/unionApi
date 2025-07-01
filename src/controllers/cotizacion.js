@@ -119,11 +119,9 @@ const getAllCotizaciones = async(req, res) => {
                                     }
                                 }, { 
                                     model: armado
-                                }, {
-                                    model: producto,
-                                    through: {
-                                        attributes: ['id', 'cantidad', 'precio', 'descuento', 'areaCotizacionId'] // o los campos que tenga productoCotizacion
-                                    }
+                                },  {
+                                    model: productoCotizacion, // El modelo de la línea, no el producto directamente
+                                    include: [ producto ] // Y DENTRO de la línea, traemos la info del producto
                                 }] 
                             }, 
                             {
