@@ -82,17 +82,11 @@ const addSuperKitToCotizacionServices = async(cotizacionId, armadoId, cantidad, 
 
 // Agregar producto a cotización
 const addProductoToCotizacionServices = async(cotizacionId, productoId, cantidad, precio, descuento, medida) => {
-    const searchItemOnCoti = await productoCotizacion.findOne({
-        where: {
-            areaId: cotizacionId,
-            productoId
-        }
-    }).catch(err => null);
 
-    if(searchItemOnCoti) return 200
     // Caso contrario, permita que se cree
     const addItemToCoti = await productoCotizacion.create({
         areaId: cotizacionId,
+        areaCotizacionId: cotizacionId,
         cantidad,
         precio,
         descuento: descuento,

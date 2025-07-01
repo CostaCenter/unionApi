@@ -277,16 +277,22 @@ kit.belongsToMany(areaCotizacion, {
 }); 
 
 
-areaCotizacion.belongsToMany(producto, { 
-  through: productoCotizacion, // Nombre de la tabla intermedia
-  foreignKey: 'areaId' 
-});
+// areaCotizacion.belongsToMany(producto, { 
+//   through: productoCotizacion, // Nombre de la tabla intermedia
+//   foreignKey: 'areaId' 
+// });
 
-producto.belongsToMany(areaCotizacion, { 
-  through: productoCotizacion, 
-  foreignKey: 'productoId' 
-});
+// producto.belongsToMany(areaCotizacion, { 
+//   through: productoCotizacion, 
+//   foreignKey: 'productoId' 
+// });
+// AÑADIR ESTAS LÍNEAS
+areaCotizacion.hasMany(productoCotizacion, { foreignKey: 'areaId', });
+productoCotizacion.belongsTo(areaCotizacion, { foreignKey: 'areaId' });
 
+producto.hasMany(productoCotizacion, { foreignKey: 'productoId' });
+productoCotizacion.belongsTo(producto, { foreignKey: 'productoId' });
+ 
 
 cotizacion.hasMany(areaCotizacion, {
   onDelete: 'CASCADE',

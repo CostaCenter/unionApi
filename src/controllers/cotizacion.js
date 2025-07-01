@@ -73,11 +73,9 @@ const getAllCotizaciones = async(req, res) => {
                             }
                         }, { 
                             model: armado
-                        }, {
-                            model: producto,
-                            through: {
-                                attributes: ['id', 'cantidad', 'precio', 'descuento', 'areaCotizacionId'] // o los campos que tenga productoCotizacion
-                            }
+                        },  {
+                            model: productoCotizacion, // El modelo de la línea, no el producto directamente
+                            include: [ producto ] // Y DENTRO de la línea, traemos la info del producto
                         }] 
                     }, 
                     {
@@ -165,16 +163,25 @@ const getCotizacion = async(req, res) => {
         const searchCoti = await cotizacion.findByPk(cotiId, {
             attributes: { exclude: ['updatedAt']},
             include:[ {model: areaCotizacion,
-                include:[{ 
-                    model: kit,
-                    include:[{
-                        model: materia
-                    },{model: extension}],
-                }, {
-                    model: armado,
-                }, {
-                    model: producto
-                }]
+                include:[
+                    // 1. Mantenemos la relación belongsToMany para 'kit' como la tenías
+                    { 
+                        model: kit,
+                        include:[{
+                            model: materia
+                        },{model: extension}],
+                        // Sequelize usará la tabla intermedia definida en tu relación
+                    }, 
+                    // 2. Mantenemos la relación belongsToMany para 'armado'
+                    {
+                        model: armado,
+                    },
+                    // 3. Usamos la NUEVA relación hasMany para 'productoCotizacion'
+                    {
+                        model: productoCotizacion, // Incluimos el modelo de la LÍNEA de ítem
+                        include: [ producto ]      // Y DENTRO de la línea, incluimos la información del producto
+                    }
+                ]
             }, {model: client}, { model: notaCotizacion}, {model: user}, {
                 model: versionCotizacion,
                 include:[{
@@ -570,7 +577,7 @@ const giveDescuentoProducto = async(req, res) => {
         // Caso contrario, avannzamos
         // Creamos petición para actualizar
         const updateProductoCotizacion = await productoCotizacion.update({
-            descuento
+            descuento 
         }, {
             where: {
                 id: productoCotizacionId
@@ -752,18 +759,19 @@ const deleteSuperKitOnCotizacion = async (req, res) => {
 const deleteProductOnCotizacion = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { cotizacionId, productoId } = req.body;
-        if(!cotizacionId || !productoId) return res.status(501).json({msg: 'Los parámetros no son validos.'});
+        const { productoCotizacionId } = req.body;
+        if(!productoCotizacionId ) return res.status(501).json({msg: 'Los parámetros no son validos.'});
         // Caso contrario, avanzamos...
 
-        const searchKit = await producto.findByPk(productoId).catch(err => null);
-        const searchCotizacion = await areaCotizacion.findByPk(cotizacionId).catch(err => null)
-        if(!searchKit || !searchCotizacion) return res.status(404).json({msg: 'No hemos encontrado esto.'});
         
         // Caso contrario, eliminamos.
 
-        const deletee = await searchKit.removeAreaCotizacion(searchCotizacion).catch(err => null);
-        if(!deletee) return res.status(502).json({msg: 'No hemos logrado eliminar esto'});
+        const removeProducCotizacion = await productoCotizacion.destroy({
+            where: {
+                id: productoCotizacionId
+            }
+        })
+        if(!removeProducCotizacion) return res.status(502).json({msg: 'No hemos logrado eliminar esto'});
 
         res.status(200).json({msg: 'Eliminado con éxito'})
     }catch(err){

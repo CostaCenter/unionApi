@@ -1,0 +1,17 @@
+{
+  "development": {
+    "username": "postgres",
+    "password": "123",
+    "database": "u",
+    "host": "localhost",
+    "dialect": "postgres"
+  },
+  "production": {
+    "username": "postgres",
+    "password": "mnfPuhNtcXTFhlurmBdslUBftGBFMZau",
+    "database": "railway",
+    "host": "centerbeam.proxy.rlwy.net",
+    "port": 41058,
+    "dialect": "postgres"
+  }
+}

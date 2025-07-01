@@ -22,6 +22,7 @@ const searchKitsForCoti = async (req, res) => {
                     {
                         [Op.or]: [
                             { name: { [Op.iLike]: `%${query}%` } }, // Búsqueda flexible (ignora mayúsculas/minúsculas)
+                            { id: query }
                         ],
                     }
                 ]
