@@ -27,7 +27,7 @@ router.use('/extension', extensionRoutes);
 router.use('/materia', materiaRoutes);
 router.use('/mt/price', priceRoutes);
  
-router.use('/kit', kitRoutes);
+router.use('/kit', kitRoutes); 
 router.use('/client', clientRoutes);
 router.use('/cotizacion', cotizacionRoutes);
 router.use('/requisicion', requisicionroutes);

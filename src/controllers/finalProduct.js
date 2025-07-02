@@ -98,6 +98,10 @@ const getAllProducto = async(req, res) => {
                     state: 'active'
                 },
                 required:false
+            }, {
+                model: linea,
+            }, {
+                model: categoria
             }],
             order:[['description', 'ASC']]
         })
@@ -305,6 +309,30 @@ const clonarProducto = async (req, res) => {
     }
 }
 
+const updatePricesProductos = async (req, res) => {
+    // Buscamos productos
+    const searchAllPrices = await productPrice.findAll();
+
+    if(!searchAllPrices) return res.status(404).json({msg: 'No hemos encontrado esto.'});
+
+    searchAllPrices.map(async (pr, i) => {
+        const valorActual = pr.descuentos; // Este valor pasará a descuento.
+        const valorIva = Number(valorActual) * 0.19
+        const final = Number(Number(valorActual) + Number(valorIva)).toFixed(0)
+        const updatePrices = await productPrice.update({
+            iva: valorIva,
+            valor: final
+        }, {
+            where: {
+                id: pr.id
+            }
+        });
+        return updatePrices
+    })
+
+    // Actualizado con éxito
+    res.status(200).json({msg: 'Actualizado'})
+}
 
 // Agregar un precio según proveedor a PT
 const addPriceProducto = async(req, res) => {
@@ -376,4 +404,5 @@ module.exports = {
     getItemProducto, // Obtener item por ID
     addPriceProducto, // Agregamos precio
     buscarPorQueryProducto, // Search by query
+    updatePricesProductos, // Update prices
 }

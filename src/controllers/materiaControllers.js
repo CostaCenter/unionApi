@@ -375,6 +375,30 @@ const addPriceMateriaPrima = async(req, res) => {
     }
 }
 
+const updatePricesMP = async (req, res) => {
+    // Buscamos productos
+    const searchAllPrices = await price.findAll();
+
+    if(!searchAllPrices) return res.status(404).json({msg: 'No hemos encontrado esto.'});
+
+    searchAllPrices.map(async (pr, i) => {
+        const valorActual = pr.valor; // Este valor pasará a descuento.
+        const valorIva = Number(Number(valorActual) * 0.19).toFixed(0);
+        const final = Number(Number(valorActual) + Number(valorIva)).toFixed(0)
+        const updatePrices = await price.update({
+            iva: valorIva,
+            valor: final
+        }, {
+            where: {
+                id: pr.id
+            }
+        });
+        return updatePrices
+    })
+
+    // Actualizado con éxito
+    res.status(200).json({msg: 'Materia prima actualizada'})
+}
 
 module.exports = { 
     buscarPorQuery, // Buscador
@@ -385,4 +409,5 @@ module.exports = {
     deleteMP, // Eliminar MP
     updateMateria, // Actualizar item
     addPriceMateriaPrima, // Agregar precio
+    updatePricesMP, // Actualizar MP
 }

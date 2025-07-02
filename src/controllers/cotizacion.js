@@ -54,43 +54,42 @@ const getAllCotizaciones = async(req, res) => {
         if(person.area == 'gerencia'){ // Si es admin muestre todo
             const searchCotizaciones = await cotizacion.findAll({
                 where: {
-                    [Op.or]: {
-                        state: 'aprobada',
-                        state: 'desarrollo'
+                    state: {
+                        [Op.in]: ['aprobada', 'desarrollo']
                     }
                 },
-                include: [ 
-                    {
-                        model: areaCotizacion,
-                        include:[{
+                attributes: { exclude: ['updatedAt']},
+                include:[ {model: areaCotizacion,
+                    include:[
+                        // 1. Mantenemos la relación belongsToMany para 'kit' como la tenías
+                        { 
                             model: kit,
                             include:[{
-                                model: materia,
-                                attributes: { exclude: ['createdAt', 'updatedAt']}
-                            }, {model: extension}], 
-                            through: {
-                                attributes: [] // o los campos que tengas en KitCotizacion
-                            }
-                        }, { 
-                            model: armado
-                        },  {
-                            model: productoCotizacion, // El modelo de la línea, no el producto directamente
-                            include: [ producto ] // Y DENTRO de la línea, traemos la info del producto
-                        }] 
-                    }, 
-                    {
-                        model: client
-                }, { model: notaCotizacion}, {model: user}, {
-                model: versionCotizacion,
-                include:[{
-                    model: cotizacion
-                }]
-            }], 
+                                model: materia
+                            },{model: extension}],
+                            // Sequelize usará la tabla intermedia definida en tu relación
+                        }, 
+                        // 2. Mantenemos la relación belongsToMany para 'armado'
+                        {
+                            model: armado,
+                        },
+                        // 3. Usamos la NUEVA relación hasMany para 'productoCotizacion'
+                        {
+                            model: productoCotizacion, // Incluimos el modelo de la LÍNEA de ítem
+                            include: [ producto ]      // Y DENTRO de la línea, incluimos la información del producto
+                        }
+                    ]
+                }, {model: client}, { model: notaCotizacion}, {model: user}, {
+                    model: versionCotizacion,
+                    include:[{
+                        model: cotizacion
+                    }]
+                }], 
                 order: [
                     ['createdAt', 'DESC'], // Orden global por creación de la cotización
                     [notaCotizacion, 'createdAt', 'ASC'], // 👈 Orden solo para las notas
                     [areaCotizacion, 'createdAt', 'DESC'], // 👈 Orden solo para las notas
-
+                    [versionCotizacion, cotizacion, 'createdAt', 'DESC']
                 ]
             }).catch(err => {
                 console.log(err);
@@ -103,35 +102,43 @@ const getAllCotizaciones = async(req, res) => {
         }else{ // Caso contrario, las cotizacion especficias
             const searchCotizaciones = await cotizacion.findAll({
                         where: {
-                            userId
+                            userId,
+                            state: {
+                                [Op.in]: ['aprobada', 'desarrollo']
+                            }
                         },
-                        include: [ 
-                            {
-                                model: areaCotizacion,
-                                include:[{
+                        attributes: { exclude: ['updatedAt']},
+                        include:[ {model: areaCotizacion,
+                            include:[
+                                // 1. Mantenemos la relación belongsToMany para 'kit' como la tenías
+                                { 
                                     model: kit,
                                     include:[{
-                                        model: materia,
-                                        attributes: { exclude: ['createdAt', 'updatedAt']}
-                                    }, {model: extension}], 
-                                    through: {
-                                        attributes: ['id', 'cantidad', 'precio', 'descuento', 'areaCotizacionId'] // o los campos que tengas en KitCotizacion
-                                    }
-                                }, { 
-                                    model: armado
-                                },  {
-                                    model: productoCotizacion, // El modelo de la línea, no el producto directamente
-                                    include: [ producto ] // Y DENTRO de la línea, traemos la info del producto
-                                }] 
-                            }, 
-                            {
-                                model: client
-                        }, { model: notaCotizacion}, {model: user}], 
+                                        model: materia
+                                    },{model: extension}],
+                                    // Sequelize usará la tabla intermedia definida en tu relación
+                                }, 
+                                // 2. Mantenemos la relación belongsToMany para 'armado'
+                                {
+                                    model: armado,
+                                },
+                                // 3. Usamos la NUEVA relación hasMany para 'productoCotizacion'
+                                {
+                                    model: productoCotizacion, // Incluimos el modelo de la LÍNEA de ítem
+                                    include: [ producto ]      // Y DENTRO de la línea, incluimos la información del producto
+                                }
+                            ]
+                        }, {model: client}, { model: notaCotizacion}, {model: user}, {
+                            model: versionCotizacion,
+                            include:[{
+                                model: cotizacion
+                            }]
+                        }], 
                         order: [
                             ['createdAt', 'DESC'], // Orden global por creación de la cotización
                             [notaCotizacion, 'createdAt', 'ASC'], // 👈 Orden solo para las notas
                             [areaCotizacion, 'createdAt', 'DESC'], // 👈 Orden solo para las notas
-
+                            [versionCotizacion, cotizacion, 'createdAt', 'DESC']
                         ]
                     }).catch(err => {
                         console.log(err);
@@ -231,6 +238,39 @@ const newCotizacion = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
+
+// Crear cotización
+const updateCotizacion = async (req, res) => {
+    try{
+        // Recibimos datos por body.
+        const { cotizacionId, userId, name, time } = req.body;
+        
+        // Validamos 
+        if(!userId || !name || !time) return res.status(501).json({msg: 'Los parámetros no son validos.'});
+         
+        // Procedemos a crear cotización
+        const add = await cotizacion.update({
+            name,
+            time,
+        }, {
+            where: {
+                id: cotizacionId
+            }
+        })
+        .catch(err => {
+            console.log(err);
+            return null;
+        });
+
+        if(!add) return res.status(502).json({msg: 'No hemos logrado actualizar esto.'});
+        // Caso contrario, devolvemos cotización
+        res.status(201).json({msg: 'Actualizado con éxito'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
 // Eliminar Cotización
 const deleteCotizacion = async (req, res) =>  {
     try{ 
@@ -1086,6 +1126,7 @@ const addRegisterToCotizacion = async (req, res) => {
 module.exports = { 
     getCotizacion, // Obtenemos una cotización por su Id
     newCotizacion, // Crear una nueva cotización,
+    updateCotizacion, // Actualizar cotizacion
     newVersionAboutCotizacion, // Versión de cotizacion
     beOfficialVersion, // Convertir a versión oficial
     deleteCotizacion, // Eliminar cotización

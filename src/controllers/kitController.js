@@ -15,19 +15,23 @@ const searchKitsForCoti = async (req, res) => {
             return res.status(400).json({ message: "Debes proporcionar un término de búsqueda." });
         }
 
+                // 1. Empezamos con la condición que siempre se aplica.
+        const whereClause = {
+            state: 'completa'
+        };
+
+        // 2. Aplicamos la lógica condicional para la búsqueda.
+        if (!isNaN(query) && query.trim() !== '') {
+            // SI ES UN NÚMERO, busca solo por ID.
+            whereClause.id = query;
+        } else {
+            // SI ES TEXTO, busca solo por nombre.
+            whereClause.name = { [Op.iLike]: `%${query}%` };
+        }
+
+
         const kits = await kit.findAll({
-            where: {
-                [Op.and]: [
-                    { state: 'completa' },
-                    {
-                        [Op.or]: [
-                            { name: { [Op.iLike]: `%${query}%` } }, // Búsqueda flexible (ignora mayúsculas/minúsculas)
-                            { id: query }
-                        ],
-                    }
-                ]
-                
-            },  
+            where: whereClause, 
             include:[{
                 model: materia,
                 attributes: { exclude: ['createdAt', 'updatedAt'] },
