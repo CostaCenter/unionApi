@@ -1,7 +1,7 @@
 const express = require('express');
-const { client, kit, extension, producto, materia, cotizacion, versionCotizacion, notaCotizacion, armado, armadoCotizacion, kitCotizacion, productoCotizacion, areaCotizacion, user, db} = require('../db/db');
+const { client, service, serviceCotizacion, kit, extension, producto, materia, cotizacion, versionCotizacion, notaCotizacion, armado, armadoCotizacion, kitCotizacion, productoCotizacion, areaCotizacion, user, db} = require('../db/db');
 const { Op } = require('sequelize');
-const { createCotizacion, addItemToCotizacionServices, addSuperKitToCotizacionServices, addProductoToCotizacionServices } = require('./services/cotizacionServices');
+const { createCotizacion, addItemToCotizacionServices, addSuperKitToCotizacionServices, addProductoToCotizacionServices, addServiceToCotizacionServices } = require('./services/cotizacionServices');
 const { createRequisicion } = require('./services/requsicionService');
 const dayjs = require('dayjs');
 const multer = require('multer');
@@ -73,6 +73,13 @@ const getAllCotizaciones = async(req, res) => {
                         {
                             model: armado,
                         },
+                        {
+                            model: serviceCotizacion,
+                            as: 'serviciosCotizados', 
+                            include:[{
+                                model: service
+                            }]
+                        },
                         // 3. Usamos la NUEVA relación hasMany para 'productoCotizacion'
                         {
                             model: productoCotizacion, // Incluimos el modelo de la LÍNEA de ítem
@@ -121,6 +128,13 @@ const getAllCotizaciones = async(req, res) => {
                                 // 2. Mantenemos la relación belongsToMany para 'armado'
                                 {
                                     model: armado,
+                                },
+                                {
+                                    model: serviceCotizacion,
+                                    as: 'serviciosCotizados',
+                                    include:[{
+                                        model: service
+                                    }]
                                 },
                                 // 3. Usamos la NUEVA relación hasMany para 'productoCotizacion'
                                 {
@@ -180,6 +194,13 @@ const getCotizacion = async(req, res) => {
                     // 2. Mantenemos la relación belongsToMany para 'armado'
                     {
                         model: armado,
+                    },  
+                    {
+                        model: serviceCotizacion,
+                        as: 'serviciosCotizados',
+                        include:[{
+                            model: service
+                        }]
                     },
                     // 3. Usamos la NUEVA relación hasMany para 'productoCotizacion'
                     {
@@ -662,7 +683,8 @@ const giveDescuentoSuperKitItem = async(req, res) => {
     }
 }
 
-// agregar superKit a la cotizacion
+// agregar
+//  superKit a la cotizacion
 const addSuperKit = async(req, res) => {
     try{
         // Recibimos datos por body 
@@ -708,6 +730,88 @@ const addProducto = async(req, res) => {
         if(!sendItem || sendItem == 502) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
         // Caso contrario, enviamos la creación
         res.status(201).json(sendItem);
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+// Agregar servicio
+const addService = async(req, res) => {
+    try{
+        // Recibimos datos por body 
+        const { cotizacionId, servicioId, cantidad, precio, descuento } = req.body; // Destructuramos
+    
+        // Validamos la entrada de parámetros
+        if(!cotizacionId || !servicioId || !cantidad || !precio) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        
+        // Enviamos petición asincrónica - Consultando una función services. Del Archivo cotizacionServices.js
+        // Pasamos la cotización, el superKit, la cantidad, el precio y un descuento si tiene.
+        const sendItem = await addServiceToCotizacionServices(cotizacionId, servicioId, cantidad, precio, descuento)
+        .catch(err => {
+            console.log(err);
+            return null;
+        });
+        if(sendItem == 200) return res.status(200).json({msg: 'Ya existe este servicio'}); 
+        if(!sendItem || sendItem == 502) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+        // Caso contrario, enviamos la creación
+        res.status(201).json(sendItem); 
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+// Dar descuento a item en cotización
+const giveDescuentoService = async(req, res) => {
+    try{
+        // Recibimos datos por body
+        const { serviceCotizacionId, descuento } = req.body;
+        // Validamos que los datos entres
+        if(!serviceCotizacionId || !descuento) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos
+        // Consultamos que exista este itemCotizacion
+        const getProductoCotizacion = await serviceCotizacion.findByPk(serviceCotizacionId);
+        // Validamos la respuesta
+        if(!getProductoCotizacion) return res.status(404).json({msg: 'No hemos encontrado este item en la cotización'});
+        // Caso contrario, avannzamos
+        // Creamos petición para actualizar
+        const updateProductoCotizacion = await serviceCotizacion.update({
+            descuento 
+        }, {
+            where: {
+                id: serviceCotizacionId
+            }
+        });
+        // Validamos la respuesta
+        if(!updateProductoCotizacion) return res.status(502).json({msg: 'No hemos logrado actualizar esto.'});
+        // Caso contrario, enviamos respuesta 200. ¡Actualizado!
+        res.status(200).json({msg: 'Descuento añadido.'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+// Eliminar Producto de una cotización
+const deleteServiceOnCotizacion = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { serviceCotizacionId } = req.body;
+        if(!serviceCotizacionId ) return res.status(501).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos...
+
+        
+        // Caso contrario, eliminamos.
+
+        const removeProducCotizacion = await serviceCotizacion.destroy({
+            where: {
+                id: serviceCotizacionId
+            }
+        })
+        if(!removeProducCotizacion) return res.status(502).json({msg: 'No hemos logrado eliminar esto'});
+
+        res.status(200).json({msg: 'Eliminado con éxito'})
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
@@ -791,7 +895,6 @@ const deleteSuperKitOnCotizacion = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
-
  
 // Eliminar Producto de una cotización
 const deleteProductOnCotizacion = async (req, res) => {
@@ -1125,7 +1228,7 @@ const addRegisterToCotizacion = async (req, res) => {
 }
 module.exports = { 
     getCotizacion, // Obtenemos una cotización por su Id
-    newCotizacion, // Crear una nueva cotización,
+    newCotizacion, // Crear una nueva cotización
     updateCotizacion, // Actualizar cotizacion
     newVersionAboutCotizacion, // Versión de cotizacion
     beOfficialVersion, // Convertir a versión oficial
@@ -1147,5 +1250,8 @@ module.exports = {
     deleteAreaToCotizacion, // Eliminar área de la cotización
     addProducto, // Agregar producto a cotización
     clonarArea, // Clonar área de cotización
-    addRegisterToCotizacion, // Agregar nota
+    addRegisterToCotizacion, // Agregar nota 
+    addService, // Dar precio a producto
+    deleteServiceOnCotizacion, // Eliminar cotización
+    giveDescuentoService, // Dar descuento.
 }  

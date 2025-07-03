@@ -1,6 +1,7 @@
 const express = require('express');
 const { addMateria, updateMateria, getAllMateria, getItem, buscarPorQuery, clonarMateriaPrima, deleteMP } = require('../controllers/materiaControllers');
 const { getAllProducto, addProductoTerminado, updateProducto, getItemProducto, buscarPorQueryProducto, deleteProducto, clonarProducto } = require('../controllers/finalProduct');
+const { newService, updateService, getServices } = require('../controllers/serviciosCotizacion');
 
 const router = express.Router();
 
@@ -42,5 +43,16 @@ router.route('/producto/clonar/:productoId/:userId')
 
 router.route('/producto/searching')
     .get(buscarPorQueryProducto)
+
+// SERVICIOS
+router.route('/services/search')
+    .get(getServices) 
+
+router.route('/service/new')
+    .post(newService)
+    .put(updateService)
+
+router.route('/producto/remove')
+    .delete(deleteProducto)
 
 module.exports = router; 

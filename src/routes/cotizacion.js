@@ -1,5 +1,5 @@
 const express = require('express');
-const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion, updateCotizacion } = require('../controllers/cotizacion');
+const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion, updateCotizacion, addService, deleteServiceOnCotizacion, giveDescuentoService } = require('../controllers/cotizacion');
 const multer = require('multer');
 
  
@@ -42,6 +42,16 @@ router.route('/add/item')
 
 router.route('/add/superKit/item') 
     .post(addSuperKit)
+
+
+router.route('/add/service/item')
+    .post(addService)
+router.route('/remove/service')
+    .delete(deleteServiceOnCotizacion)
+
+router.route('/service/descuento')
+    .put(giveDescuentoService) 
+
 
 router.route('/remove/item')
     .delete(deleteKitOnCotizacion)

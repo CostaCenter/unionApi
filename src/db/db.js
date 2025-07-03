@@ -30,7 +30,11 @@ const modelProductoCotizacion = require('./model/productoCotizacion');
 const modelArmado = require('./model/armado'); // Armar elementos
 const modelArmadoKit = require('./model/armadoKit'); // Relación kits y armado
 const modelArmadoCotizacion = require('./model/armadoCotizacion'); // Relacion Armado y cotización
- 
+// SERVICIOS
+const modelService = require('./model/servicios');
+const modelServiceCotizacion = require('./model/serviciosCotizacion');
+
+
 // PARTE COMPRAS ALMACEN
 const modelInventario = require('./model/inventario'); // Inventario
 const modelUbicacion = require('./model/ubicacion'); // Ubicación.
@@ -99,6 +103,8 @@ modelProductoCotizacion(sequelize);
 modelArmado(sequelize);
 modelArmadoCotizacion(sequelize);
 modelArmadoKit(sequelize);
+modelService(sequelize);
+modelServiceCotizacion(sequelize);
 // COMPRAS E INVENTARIO
 // modelInventario(sequelize);
 // modelUbicacion(sequelize);
@@ -115,7 +121,7 @@ modelUserPermission(sequelize);
 
 const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, itemKit,
   client, versionCotizacion, cotizacion, notaCotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
-  permission, user_permission, areaCotizacion, productoCotizacion
+  permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion
 } = sequelize.models; 
 
 
@@ -159,7 +165,6 @@ linea.hasMany(producto, {
   foreignKey: 'lineaId', // Clave foránea en la tabla contact
   onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
 });
-
 producto.belongsTo(linea);
 
 // Relación uno a muchos
@@ -167,7 +172,6 @@ categoria.hasMany(producto, {
 foreignKey: 'categoriumId',
   onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
 });  
-
 producto.belongsTo(categoria); 
 
 
@@ -346,7 +350,26 @@ armado.belongsToMany(areaCotizacion, {
   foreignKey: 'armadoId' 
 }); 
 
+// En tu archivo de asociaciones (ej: db.js)
 
+// 1. Relación entre Área y la Línea de Servicio
+areaCotizacion.hasMany(serviceCotizacion, { 
+    foreignKey: 'areaCotizacionId',
+    as: 'serviciosCotizados' 
+});
+serviceCotizacion.belongsTo(areaCotizacion, { 
+    foreignKey: 'areaCotizacionId' 
+});
+
+
+// 2. Relación entre el Catálogo de Servicios y la Línea de Servicio
+service.hasMany(serviceCotizacion, { 
+    foreignKey: 'servicioId' 
+});
+serviceCotizacion.belongsTo(service, { 
+    foreignKey: 'servicioId' 
+});
+ 
 
 cotizacion.hasMany(requisicion, {
   as: 'requisiciones',
