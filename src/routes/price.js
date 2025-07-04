@@ -1,5 +1,5 @@
 const express = require('express');
-const { addMateria, updateMateria, getAllMateria, getItem, addPriceMateriaPrima, updatePricesMP } = require('../controllers/materiaControllers');
+const { addMateria, updateMateria, getAllMateria, getItem, addPriceMateriaPrima, updatePricesMP, updateToInactivePCMP } = require('../controllers/materiaControllers');
 const { addPriceProducto, updateProducto, updatePricesProductos } = require('../controllers/finalProduct');
 
 const router = express.Router();
@@ -8,6 +8,9 @@ const router = express.Router();
 router.route('/give')
     .post(addPriceMateriaPrima)
     .put(updateMateria)
+
+router.route('/remove')
+    .put(updateToInactivePCMP)
 
 // FUNCIÓN PARA ACTUALIZAR TODOS LOS PRECIOS DEL SISTEMA MP | ¡¡¡ PELIGRO !!!
 // router.route('/mp/updateAll')
