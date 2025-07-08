@@ -27,7 +27,7 @@ const newClient = async(req, res) => {
         const { type, nit, photo, nombre, siglas, direccion, ciudad, departamento, pais, fijos, phone, email, userId } = req.body;
     
         // Validamos que los datos entren correctamente
-        if(!type || !nit || !nombre || !direccion || !ciudad || !departamento || !phone ) return res.status(501).json({msg: 'Los parámetros no son validos.'});
+        if(!type || !nit || !nombre || !direccion || !phone ) return res.status(501).json({msg: 'Los parámetros no son validos.'});
         // Caso contrario, validamos si ya existe este registro en la base de datos
          
         const searchClient = await client.findOne({
