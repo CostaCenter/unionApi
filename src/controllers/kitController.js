@@ -287,7 +287,7 @@ const getKit = async (req, res) => {
                 // ▼▼▼ INICIO DEL BLOQUE CORREGIDO ▼▼▼
                 {
                     model: itemKit, // 1. La asociación ahora pasa por aquí
-                    attributes: ['id', 'cantidad', 'medida', 'calibre', 'areaId'], // Atributos de la tabla intermedia que quieres ver
+                    attributes: ['id', 'cantidad', 'medida', 'calibre', 'areaId', 'materiaId'], // Atributos de la tabla intermedia que quieres ver
                     include: [
                         {
                             model: materia, // 2. Incluimos materium DENTRO de itemKit
@@ -532,87 +532,102 @@ const updateItemOnKit = async (req, res) => {
     }
 }
 // Clonar KIT
-const clonarKit = async (req, res) => { 
-    try{
-        // Recibimos parametro por params
-        const { kitId , userId} = req.params;
-        if(!kitId) return res.status(501).json({msg: 'Invado el parámetro'})
-        // Definimos la transacción
-        const transaction = await db.transaction();
+const clonarKit = async (req, res) => {
+    const transaction = await db.transaction();
+    try {
+        const { kitId, userId } = req.params;
+        if (!kitId) return res.status(400).json({ msg: 'Parámetro inválido' });
 
+        // --- 1. CONSULTA INICIAL ---
+        // Traemos el kit original con sus áreas y sus items de una sola vez.
         const kitOriginal = await kit.findByPk(kitId, {
-            include: [{ model: materia }],
+            include: [
+                { model: itemKit },
+                { model: areaKit }
+            ],
             transaction
-        }).catch(err => {
-            console.log(err);
-            return null; 
         });
 
-        // Validamos la existencia
-        if(!kitOriginal) {
+        if (!kitOriginal) {
             await transaction.rollback();
-            return res.status(404).json({msg: 'No hemos encontrado este kit'});
+            return res.status(404).json({ msg: 'No hemos encontrado este kit' });
         }
-        // Caso contrario, avanzamos...
 
+        // --- 2. CREAR EL KIT CLONADO ---
         const nuevoKit = await kit.create({
-            name: kitOriginal.name,
+            name: `${kitOriginal.name} - Copia`,
             description: kitOriginal.description,
-            lineaId: kitOriginal.lineaId, 
+            lineaId: kitOriginal.lineaId,
             categoriumId: kitOriginal.categoriumId,
             extensionId: kitOriginal.extensionId,
-            state: kitOriginal.state
+            state: 'desarrollo'
+        }, { transaction });
 
-        }, { transaction }); 
+        // --- 3. CLONAR LAS ÁREAS Y CREAR UN MAPA DE IDs ---
+        const areaIdMap = new Map();
 
-        if(!nuevoKit) { 
-            await transaction.rollback();
-            return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+        if (kitOriginal.areaKits && kitOriginal.areaKits.length > 0) {
+            // Preparamos los datos de las nuevas áreas
+            const nuevasAreasData = kitOriginal.areaKits.map(area => ({
+                name: area.name,
+                kitId: nuevoKit.id, // ¡Asignadas al nuevo kit!
+                state: area.state,
+            }));
+
+            // Creamos las nuevas áreas en la base de datos
+            // `returning: true` es importante para que nos devuelva los objetos creados con sus nuevos IDs
+            const nuevasAreasCreadas = await areaKit.bulkCreate(nuevasAreasData, { transaction, returning: true });
+
+            // Creamos un mapa para saber la correspondencia: { 'ID_viejo': ID_nuevo, ... }
+            kitOriginal.areaKits.forEach((areaVieja, index) => {
+                areaIdMap.set(areaVieja.id, nuevasAreasCreadas[index].id);
+            });
         }
 
-        // Listamos la materia
-        const nuevaMateria = kitOriginal.materia.map((mp) => ({
-            cantidad: String(mp.itemKit.cantidad),
-            medida: String(mp.itemKit.medida),
-            materiaId: mp.itemKit.materiaId, 
-            calibre: mp.calibre ? mp.itemKit.calibre : null,
-            kitId: nuevoKit.id
-        }));
-        // Caso contrario
-        // Caso contrario, avanzamos
-        if(nuevaMateria.length > 0){
-            await itemKit.bulkCreate(nuevaMateria,  { transaction })
-            .then((res) =>  {
-                return true
-            })
-            .then(async (res) => {
-                // Entidad, entidadId, accion, detalle, fecha, userId
-                const a = await addLog('kits', nuevoKit.id, 'create', 'Clonó este kit.', userId)
-                return res
-            })
-            
-            await transaction.commit();
-            return res.status(201).json({msg: 'Kit clonado con éxito!'});
-        }else{
-
-            await transaction.commit();
-
-            return res.status(201).json({msg: 'Kit clonado con éxito (El Kit original no tenia items).'})
+        // --- 4. INSERCIÓN Y COMMIT ---
+        if (kitOriginal.itemKits && kitOriginal.itemKits.length > 0) {
+            const nuevosItems = kitOriginal.itemKits.map(item => (
+                
+            console.log(item),
+                {
+                
+                cantidad: item.cantidad,
+                medida: item.medida,
+                calibre: item.calibre,
+                materiaId: item.materiaId,
+                areaId: item.areaId ? areaIdMap.get(item.areaId) : null,
+                kitId: nuevoKit.id
+            }));
+            await itemKit.bulkCreate(nuevosItems, { transaction });
         }
-    }catch(err){
-        if (transaction) {
-            try {
-                 await transaction.rollback();
-                 console.error('Rollback de transacción exitoso.');
-            } catch (rollbackErr) {
-                 console.error('Error haciendo rollback de la transacción:', rollbackErr);
-                 // Opcional: reportar este error de rollback si es crítico
-            }
-        }
+        
+        // Confirmamos que toda la operación en la base de datos fue exitosa
+        await transaction.commit();
 
-        console.error('Error en la funcion clonar Kit.', err);
+        // --- 5. PASO FINAL: BUSCAMOS EL KIT COMPLETO PARA LA RESPUESTA ---
+        const kitClonadoCompleto = await kit.findByPk(nuevoKit.id, {
+            // Incluimos toda la información que el frontend necesita
+            include: [
+                {
+                    model: itemKit,
+                    include: [materia] // AHORA SÍ incluimos la materia prima
+                },
+                {
+                    model: areaKit
+                }
+            ]
+        });
 
-        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+        // Enviamos el objeto completo en la respuesta
+        return res.status(201).json({ 
+            msg: 'Kit, áreas e items clonados con éxito!', 
+            nuevoKit: kitClonadoCompleto // Enviamos la versión completa
+        });
+
+    } catch (err) {
+        if (transaction) await transaction.rollback();
+        console.error('Error en la función clonarKit:', err);
+        res.status(500).json({ msg: 'Ha ocurrido un error en el servidor.' });
     }
 }
 
