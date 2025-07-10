@@ -1,5 +1,5 @@
 const express = require('express');
-const { client, service, serviceCotizacion, kit, extension, producto, materia, cotizacion, versionCotizacion, notaCotizacion, armado, armadoCotizacion, kitCotizacion, productoCotizacion, areaCotizacion, user, db} = require('../db/db');
+const { client, service, serviceCotizacion, kit, itemKit, extension, producto, materia, cotizacion, versionCotizacion, notaCotizacion, armado, armadoCotizacion, kitCotizacion, productoCotizacion, areaCotizacion, user, db} = require('../db/db');
 const { Op } = require('sequelize');
 const { createCotizacion, addItemToCotizacionServices, addSuperKitToCotizacionServices, addProductoToCotizacionServices, addServiceToCotizacionServices } = require('./services/cotizacionServices');
 const { createRequisicion } = require('./services/requsicionService');
@@ -65,8 +65,8 @@ const getAllCotizaciones = async(req, res) => {
                         { 
                             model: kit,
                             include:[{
-                                model: materia
-                            },{model: extension}],
+                                model: extension
+                            }]
                             // Sequelize usará la tabla intermedia definida en tu relación
                         }, 
                         // 2. Mantenemos la relación belongsToMany para 'armado'
@@ -120,11 +120,9 @@ const getAllCotizaciones = async(req, res) => {
                                 // 1. Mantenemos la relación belongsToMany para 'kit' como la tenías
                                 { 
                                     model: kit,
-                                    include:[{
-                                        model: materia
-                                    },{model: extension}],
                                     // Sequelize usará la tabla intermedia definida en tu relación
                                 }, 
+                                
                                 // 2. Mantenemos la relación belongsToMany para 'armado'
                                 {
                                     model: armado,
@@ -185,11 +183,11 @@ const getCotizacion = async(req, res) => {
                 include:[
                     // 1. Mantenemos la relación belongsToMany para 'kit' como la tenías
                     { 
-                        model: kit,
+                        model: kit, // 1. Incluimos el modelo que tiene el precio y los datos de la cotización.
+                        attributes: ['id', 'name', 'description'], // Trae solo los campos que necesites del kit
                         include:[{
-                            model: materia
-                        },{model: extension}],
-                        // Sequelize usará la tabla intermedia definida en tu relación
+                            model: extension
+                        }]
                     }, 
                     // 2. Mantenemos la relación belongsToMany para 'armado'
                     {

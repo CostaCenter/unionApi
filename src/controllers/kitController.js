@@ -1,5 +1,5 @@
 const express = require('express');
-const { materia, proveedor, extension, price, kit, itemKit, linea, categoria, percentage, Op, db, literal} = require('../db/db');
+const { materia, proveedor, extension, price, kit, areaKit, itemKit, linea, categoria, percentage, Op, db, literal} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 const { addLog } = require('./services/logServices');
@@ -32,18 +32,30 @@ const searchKitsForCoti = async (req, res) => {
 
         const kits = await kit.findAll({
             where: whereClause, 
-            include:[{
-                model: materia,
-                attributes: { exclude: ['createdAt', 'updatedAt'] },
-                include:[{
-                    model: price,
-                    where: {
-                        state: 'active'
-                    }, 
-                    attributes: { exclude: ['createdAt', 'updatedAt'] },
-
-                }]
-            },{
+            include:[
+                // ▼▼▼ INICIO DEL BLOQUE MODIFICADO ▼▼▼
+                {
+                    model: itemKit, // 1. La asociación ahora pasa por el modelo intermedio
+                    attributes: { 
+                        // Opcional: Excluye datos de la tabla intermedia para una respuesta más limpia
+                        exclude: ['createdAt', 'updatedAt', 'kitId', 'materiaId', 'areaId'] 
+                    },
+                    include: [
+                        {
+                            model: materia, // 2. Incluimos Materia DENTRO de ItemKit
+                            include:[{
+                                model: price,
+                                where: {
+                                    state: 'active'
+                                },
+                                required: false // Se recomienda para no excluir kits si una materia no tiene precio activo
+                            }]
+                        },
+                        {
+                            model: areaKit // 3. Incluimos también el Área
+                        }
+                    ]
+                },{
                 model: categoria
             },
             {
@@ -106,52 +118,69 @@ const searchKitsQuery = async(req, res) => {
     }
 }
 // Obtener todos los kikts Terminados
+// Asegúrate de importar todos los modelos necesarios al inicio del archivo
+
 const getAllKitCompleted = async(req, res) => {
     try{
-        // Buscamos todos los elementos dentro de la base de datos
+        // La búsqueda principal no cambia
         const searchAll = await kit.findAll({
             where: {
                 state: 'completa'
             },
-            include:[{
-                model: materia,
-                attributes: { exclude: ['createdAt', 'updatedAt'] },
-                include:[{
-                    model: price,
-                    where: {
-                        state: 'active'
-                    }, 
-                    attributes: { exclude: ['createdAt', 'updatedAt'] },
-
-                }]
-            },{
-                model: categoria
-            },
-            {
-                model: linea,
-                include:[{
-                    model: percentage,
-                    where: {
-                        state: 'active'
+            include:[
+                // =============================================================
+                // ▼▼▼ ESTE ES EL BLOQUE MODIFICADO ▼▼▼
+                // =============================================================
+                {
+                    model: itemKit, // 1. Ahora incluimos el modelo intermedio ItemKit
+                    attributes: { 
+                        // Excluimos los IDs de la tabla intermedia para una respuesta más limpia
+                        exclude: ['createdAt', 'updatedAt', 'kitId', 'materiaId', 'areaId'] 
                     },
-                    required:false
-
-                }]
-            },{
-                model: extension
-            }] 
-        }).catch(err => {
-            console.log(err)
-            return null
+                    include: [
+                        {
+                            model: materia, // 2. Anidamos Materia DENTRO de ItemKit
+                            attributes: { exclude: ['createdAt', 'updatedAt'] },
+                            include: [{
+                                model: price,
+                                where: { state: 'active' }, 
+                                attributes: { exclude: ['createdAt', 'updatedAt'] },
+                                required: false // Usar false o left join para no excluir kits si una materia no tiene precio activo
+                            }]
+                        },
+                        {
+                            model: Area // 3. También anidamos Area DENTRO de ItemKit
+                        }
+                    ]
+                },
+                // =============================================================
+                // ▲▲▲ FIN DEL BLOQUE MODIFICADO ▲▲▲
+                // =============================================================
+                {
+                    model: categoria
+                },
+                {
+                    model: linea,
+                    include:[{
+                        model: percentage,
+                        where: {
+                            state: 'active'
+                        },
+                        required:false
+                    }]
+                },{
+                    model: extension
+                }
+            ] 
         });
 
-        if(!searchAll) return res.status(404).json({msg: 'No hemos encontrado esto'});
+        if(!searchAll || searchAll.length === 0) return res.status(404).json({msg: 'No se encontraron kits completados'});
 
-        // caso contrario, enviamos resultados
-        res.status(200).json(searchAll)
+        // Enviamos resultados
+        res.status(200).json(searchAll);
     }catch(err){
         console.log(err);
-        res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
+        res.status(500).json({msg: 'Ha ocurrido un error en el servidor'});
     }
 }
 
@@ -189,107 +218,127 @@ const getKits = async(req, res) => {
 // Obtener todos los kikts
 const getAllKit = async(req, res) => {
     try{
-        // Buscamos todos los elementos dentro de la base de datos 
-        
-        
         const searchAll = await kit.findAll({
-            include:[{
-                model: materia,
-                include:[{
-                    model: price,
-                    where: {
-                        state: 'active'
-                    }
-                }]
-            },{ 
-                model: categoria,
-                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
-            },{
-                model: linea,
-                include:[{
-                    model: percentage,
-                    where: {
-                        state: 'active'
+            include:[
+                // ▼▼▼ INICIO DEL BLOQUE MODIFICADO ▼▼▼
+                {
+                    model: itemKit, // 1. La asociación ahora pasa por el modelo intermedio
+                    attributes: { 
+                        // Opcional: Excluye datos de la tabla intermedia para una respuesta más limpia
+                        exclude: ['createdAt', 'updatedAt', 'kitId', 'materiaId', 'areaId'] 
                     },
-                    required:false
-
-                }],
-                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
-                
-            },{ 
-                model: extension,
-                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'state'] }
-
-            }] ,
+                    include: [
+                        {
+                            model: materia, // 2. Incluimos Materia DENTRO de ItemKit
+                            include:[{
+                                model: price,
+                                where: {
+                                    state: 'active'
+                                },
+                                required: false // Se recomienda para no excluir kits si una materia no tiene precio activo
+                            }]
+                        },
+                        {
+                            model: areaKit // 3. Incluimos también el Área
+                        }
+                    ]
+                },
+                // ▲▲▲ FIN DEL BLOQUE MODIFICADO ▲▲▲
+                { 
+                    model: categoria,
+                    attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
+                },{
+                    model: linea,
+                    include:[{
+                        model: percentage,
+                        where: {
+                            state: 'active'
+                        },
+                        required:false
+                    }],
+                    attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
+                },{ 
+                    model: extension,
+                    attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'state'] }
+                }
+            ] ,
             order:[['name', 'ASC']]
-        }).catch(err => {
-            console.log(err)
-            return null
         });
 
-        if(!searchAll) return res.status(404).json({msg: 'No hemos encontrado esto'});
+        if(!searchAll || searchAll.length === 0) return res.status(404).json({msg: 'No se encontraron kits'});
 
-        // caso contrario, enviamos resultados
-        res.status(200).json(searchAll)
+        res.status(200).json(searchAll);
     }catch(err){
         console.log(err);
-        res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
+        res.status(500).json({msg: 'Ha ocurrido un error en el servidor'})
     }
 }
 // Obtenemos un Kit con precios
-const getKit = async(req, res) => {
-    try{
-        // Recibimos body
+const getKit = async (req, res) => {
+    try {
         const { kitId } = req.params;
-        if(!kitId) return res.status(404).json({msg: 'Parámetro no es valido.'});
-        
-        // Caso contrario, avanzamos
+        if (!kitId) return res.status(404).json({ msg: 'Parámetro no es valido.' });
+
         const searchKit = await kit.findOne({
             where: {
                 id: kitId
             },
-            include:[{
-                model:materia,
-                attributes:['id', 'item', 'description', 'medida', 'unidad'],
-                include:[{
-                    model: price,
+            include: [
+                // ▼▼▼ INICIO DEL BLOQUE CORREGIDO ▼▼▼
+                {
+                    model: itemKit, // 1. La asociación ahora pasa por aquí
+                    attributes: ['id', 'cantidad', 'medida', 'calibre', 'areaId'], // Atributos de la tabla intermedia que quieres ver
+                    include: [
+                        {
+                            model: materia, // 2. Incluimos materium DENTRO de itemKit
+                            attributes: ['id', 'item', 'description', 'medida', 'unidad'], // Tus atributos originales
+                            include: [{
+                                model: price,
+                                where: { state: 'active' },
+                                required: false, // Usar false es una buena práctica (LEFT JOIN)
+                                attributes: ['id', 'valor', 'iva', 'descuentos', 'state'] // Tus atributos originales
+                            }]
+                        },
+                        {
+                            model: areaKit, // 3. También incluimos el área,
+                        } 
+                    ]
+                },
+                {
+                    model: areaKit,
                     where: {
-                        state: 'active'
-                    },
-                    attributes: ['id', 'valor', 'iva', 'descuentos', 'state']
-                }]
-            },{ 
-                model: categoria,
-                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
-            },
-            {
-                model: linea,
-                include:[{
-                    model: percentage,
-                    where: {
-                        state: 'active'
+                        state: true
                     },
                     required:false
-
-                }], 
-                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
-            },{ 
-                model: extension,
-                attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'state'] }
-
-            }]
-        }).catch(err => {
-            console.log(err);
-            return null;
+                },
+                // ▲▲▲ FIN DEL BLOQUE CORREGIDO ▲▲▲
+                {
+                    model: categoria,
+                    attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
+                },
+                {
+                    model: linea,
+                    include: [{
+                        model: percentage,
+                        where: { state: 'active' },
+                        required: false
+                    }],
+                    attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
+                },
+                {
+                    model: extension,
+                    attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'state'] }
+                }
+            ]
         });
 
-        if(!searchKit) return res.status(404).json({msg: 'No hemos encontrado esto.'});
-        // Caso contrario, avanzamos
-        res.status(201).json(searchKit);
-    
-    }catch(err){
+        if (!searchKit) return res.status(404).json({ msg: 'No hemos encontrado esto.' });
+        
+        res.status(200).json(searchKit); // Se suele usar 200 para GET exitosos
+
+    } catch (err) {
         console.log(err);
-        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+        res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
     }
 }
 
@@ -366,21 +415,71 @@ const updateKitt = async (req, res) => {
     }
 }
 
+// Crear nuevo segmento para un kit
+const addSegmento = async(req, res) => {
+    try{
+        // Recibimos datos por body
+        const { name, kitId, userId } = req.body;
+        // Validamos la entrada
+        if(!name || !kitId || !userId) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        // Caso contrario
+        const addSeg = await areaKit.create({
+            name,
+            kitId,
+            state: true
+        });
+        // Validamos
+        if(!addSeg) return res.status(502).json({msg: 'No hemos logrado crear este segmento'});
+        // Caso contrario, enviamos respuesta.
+        res.status(201).json(addSeg);
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+// Crear nuevo segmento para un kit
+const updateSegmento = async(req, res) => {
+    try{
+        // Recibimos datos por body
+        const { name, areaId } = req.body;
+        // Validamos la entrada
+        if(!name || !areaId) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        // Caso contrario
+        const addSeg = await areaKit.update({
+            name,
+        }, {
+            where: {
+                id: areaId
+            }
+        });
+        // Validamos
+        if(!addSeg) return res.status(502).json({msg: 'No hemos logrado crear este segmento'});
+        // Caso contrario, enviamos respuesta.
+        res.status(201).json(addSeg);
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
 // Agregamos item al Kit
 const addItem = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { mtId, kitId, cantidad, medida, calibre, userId} = req.body;
+        const { mtId, kitId, areaKitId,  cantidad, medida, calibre, userId} = req.body;
 
         //Validamos que entren correctamente.
         if(!mtId || !kitId || !cantidad || !medida) return res.status(501).json({msg: 'Los parámetros no son validos.'});
         
         // Caso contrario, avanzamos...
 
-        const addChoosed = await addItemToKit(mtId, kitId, cantidad, medida, calibre)
+        const addChoosed = await addItemToKit(mtId, kitId, cantidad, medida, calibre, areaKitId)
         .then(async res => {
             const updateKit = await changeState(kitId, 'desarrollo')
-            return res
+            return res 
         })
         .then(async (res) => {
             // Entidad, entidadId, accion, detalle, fecha, userId
@@ -402,22 +501,21 @@ const addItem = async (req, res) => {
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
-}
+} 
 
 const updateItemOnKit = async (req, res) => {
     try{
         // Recibimos por body
-        const { kitId, materiaId, medida, userId } = req.body;
+        const { itemKitId, kitId, materiaId, medida, userId } = req.body;
         // Validamos que los datos entren correctamente
-        if(!kitId || !materiaId || !medida) return res.status(400).json({msg: 'No hemos recibido los datos correctamente.'});
+        if(!itemKitId || !kitId || !materiaId || !medida) return res.status(400).json({msg: 'No hemos recibido los datos correctamente.'});
         // Caso contrario, avanzamos
 
         const updateItemKit = itemKit.update({
             medida
         }, {
             where: {
-                kitId,
-                materiaId
+                id: itemKitId,
             }
         }).then(async (res) => {
             // Entidad, entidadId, accion, detalle, fecha, userId
@@ -523,12 +621,12 @@ const clonarKit = async (req, res) => {
 const deleteItemOnKit = async(req, res) => {
     try{
         // Recibo dos varaibles por body
-        const { kitId, itemId, userId} = req.body;
+        const { itemKitId, kitId, itemId, userId} = req.body;
         // Validamos
-        if(!kitId || !itemId) return res.status(501).json({msg: 'Los parámetros no son validos'});
+        if(!itemKitId ) return res.status(501).json({msg: 'Los parámetros no son validos'});
         
         // Caso contrario, avanzamos...
-        const sendToDelete = await deleteDeleteItemOnKit(kitId, itemId)
+        const sendToDelete = await deleteDeleteItemOnKit(itemKitId, kitId, itemId)
         .then(async res => {
             const updateKit = await changeState(kitId, 'desarrollo')
             return res
@@ -600,6 +698,8 @@ const deleteKit = async(req, res) => {
 module.exports = { 
     searchKitsQuery, // SearchKits With Query
     addKit, // Agregamos KIT.
+    addSegmento, // Nuevo segmento
+    updateSegmento, // Actualizar segmento
     addItem, // Agregar Item
     updateKitt, // Actualizar kit
     clonarKit, // Clonar Kit

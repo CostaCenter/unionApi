@@ -46,7 +46,7 @@ const createKitServices = async(code, nombre, description, extension, linea, cat
 } 
  
 // Add Items To Kit. 
-const addItemToKit = async (mtId, kitId, cantidad, medida, calibre) => {
+const addItemToKit = async (mtId, kitId, cantidad, medida, calibre, areaKitId) => {
     try{
         // Buscamos que exista el MtId y el Kit.
         const searchKit = await kit.findByPk(kitId).catch(err => null);
@@ -69,14 +69,6 @@ const addItemToKit = async (mtId, kitId, cantidad, medida, calibre) => {
         });
         if(!searcMateria) return 404
         
-        const existeItem = await itemKit.findOne({
-            where: {
-                kitId: kitId,
-                materiaId: mtId
-            }
-        }).catch(err => null);
-
-        if(existeItem) return 200;
        
         // Caso contrario... 
         const addItemToKitSend = await itemKit.create({
@@ -84,7 +76,8 @@ const addItemToKit = async (mtId, kitId, cantidad, medida, calibre) => {
             medida,
             kitId,
             materiaId: mtId,
-            calibre
+            calibre,
+            areaId: areaKitId
         }).catch(err => {
             console.log(err);
             return 502;
@@ -98,7 +91,7 @@ const addItemToKit = async (mtId, kitId, cantidad, medida, calibre) => {
 }
 
 // Eliminar item de un kit
-const deleteDeleteItemOnKit = async (kitId, itemId) => {
+const deleteDeleteItemOnKit = async (itemKitId, kitId, itemId) => {
     try{    
         // Validamos que los parámetros entren realmente.
         // Caso contrario, avanzamos...
@@ -112,7 +105,12 @@ const deleteDeleteItemOnKit = async (kitId, itemId) => {
         // }).catch(err => null);
 
         // Si no hay resultados, envia respuesta
-        const deletee = await searchKit.removeMateria(searchMateria);
+        // const deletee = await searchKit.removeMateria(searchMateria);
+        const deletee = await itemKit.destroy({
+            where: {
+                id: itemKitId
+            }
+        })
         if(!deletee) return 502
         return 200
 

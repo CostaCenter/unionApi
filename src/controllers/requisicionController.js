@@ -1,245 +1,239 @@
 const express = require('express');
-const { materia, cotizacion, armado, proveedor, extension, price, kit, itemKit, linea, categoria, requisicion, db, Op} = require('../db/db');
+const { materia, cotizacion, client, user, armado, kitCotizacion, armadoKits, areaCotizacion, armadoCotizacion, proveedor, extension, price, kit, itemKit, linea, categoria, requisicion, db, Op} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 
 // Obtener todas las requisiciones
 const getAllRequisiciones = async (req, res) => {
-    try{
-        // Recibimos todas las requsiciones
+    try {
         const searchReq = await requisicion.findAll({
             include: [{
                 model: cotizacion,
-                include:[{
-                    model: kit,
-                    include: [{
-                        model: materia,
-                    }],
-                    through: {
-                        attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
-                    }
-                }],
-                
-            }]   
-        }).catch(err => {
-            console.log(err);
-            return null;
+                attributes: ['id', 'name', 'state', 'createdAt'], // Traemos solo datos clave
+                include: [
+                    { model: client },
+                    { model: user, attributes: ['id', 'name'] }
+                ]
+            }],
+            order: [['createdAt', 'DESC']]
         });
 
-        if(!searchReq || !searchReq.length) return res.status(404).json({msg: 'Sin resultados.'});
-        // Caso contrario
-        res.status(200).json(searchReq)
-    }catch(err){
-        console.log(err)
-        res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
+        if (!searchReq || !searchReq.length) {
+            return res.status(404).json({ msg: 'Sin resultados.' });
+        }
+        
+        res.status(200).json(searchReq);
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ msg: 'Ha ocurrido un error en el servidor' });
     }
 }
 
-
 const getRequisicion = async (req, res) => {
-    try{
-        // Recibimos requisición por params
+    try {
         const { reqId } = req.params;
-        // Validamos
-        if(!reqId) return res.status(501).json({msg: 'Parámetro no es valido.'});
-        // Caso contrario avanzamos
-        // Consultamos
+        if (!reqId) return res.status(400).json({ msg: 'Parámetro no es válido.' });
+
+        // PASO 1, 2 y 3: Se mantienen igual. Traemos los datos en dos consultas.
         const searchReq = await requisicion.findByPk(reqId, {
             include: [{
                 model: cotizacion,
-                include:[{
-                    model: kit,
-                    include: [{
-                        model: materia,
-                    }],
-                    through: {
-                        attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
-                    }
-                },{
-                    model: armado,
-                    include: [{
-                        model: kit,
-                        include:[{
-                            model: materia
-                        }]
-                    }],
-                    through: {
-                        attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
-                    }
-                }],
-                
-            }]   
-        }).catch(err => {
-            console.log(err);
-            return null;
+                include: [{
+                    model: areaCotizacion,
+                    include: [
+                        { model: kit, through: { attributes: ['cantidad', 'precio'] } },
+                        { model: armado, through: { attributes: ['cantidad', 'precio'] }, include: [{ model: kit, as: 'kits', through: { attributes: ['cantidad'] } }] }
+                    ]
+                }]
+            }]
         });
 
-        // Validamos respuesta
-        if(!searchReq) return res.status(404).json({msg: 'No hemos encontrado esta requisición'});
-        // Caso contrario, la enviamos
+        if (!searchReq) {
+            return res.status(404).json({ msg: 'No hemos encontrado esta requisición' });
+        }
 
+        const kitIds = new Set();
+        const kitDataMap = new Map();
+        searchReq.cotizacion.areaCotizacions.forEach(area => {
+            area.kits.forEach(k => { kitIds.add(k.id); kitDataMap.set(k.id, k.kitCotizacion); });
+            area.armados.forEach(a => a.kits.forEach(k => { kitIds.add(k.id); kitDataMap.set(k.id, k.armadoKits); }));
+        });
 
-        const kits = searchReq.cotizacion.kits
-        const armados = searchReq.cotizacion.armados;
-        const totalMateriaPrima  = {};
+        const kitsConMateria = await kit.findAll({
+            where: { id: [...kitIds] },
+            include: [{ model: itemKit, include: [materia] }]
+        });
 
-        kits.forEach(kit => {
-            const cantidadKit = kit.kitCotizacion.cantidad;
+        // --- PASO 4: Lógica de cálculo CON LA CORRECCIÓN ---
+        const totalMateriaPrima = {};
+        
+        // Iteramos sobre la primera consulta para obtener las cantidades correctas
+        searchReq.cotizacion.areaCotizacions.forEach(area => {
+            // Procesamos Kits directos
+            area.kits.forEach(kitEnCoti => {
+                const cantidadKitEnCoti = kitEnCoti.kitCotizacion?.cantidad || 0;
+                const kitDetallado = kitsConMateria.find(k => k.id === kitEnCoti.id);
 
-            kit.materia.forEach(mt => {
-                const key = `${mt.id}`
-                const cantidadTotal = Number(mt.itemKit.medida) * Number(cantidadKit);
-                
-                if (!totalMateriaPrima[key]) {
-                    totalMateriaPrima[key] = {
-                        id: mt.id,
-                        nombre: mt.description,
-                        medidaOriginal: mt.medida,
-                        unidad: mt.unidad,
-                        cantidad: 0 
-                    };
+                if (kitDetallado && kitDetallado.itemKits) {
+                    kitDetallado.itemKits.forEach(item => {
+                        // ▼▼▼ CORRECCIÓN AQUÍ ▼▼▼
+                        const key = `${item.materium.id}`; // Usamos 'materium'
+                        const cantidadTotal = Number(item.medida) * Number(cantidadKitEnCoti);
+                        
+                        if (!totalMateriaPrima[key]) {
+                            totalMateriaPrima[key] = { 
+                                id: item.materium.id, // Usamos 'materium'
+                                nombre: item.materium.description, 
+                                medidaOriginal: item.materium.medida, 
+                                unidad: item.materium.unidad, 
+                                cantidad: 0 
+                            };
+                        }
+                        totalMateriaPrima[key].cantidad += cantidadTotal;
+                    });
                 }
+            });
 
-                totalMateriaPrima[key].cantidad += cantidadTotal;
-            })
+            // Procesamos Armados
+            area.armados.forEach(armadoEnCoti => {
+                const cantidadArmadoEnCoti = armadoEnCoti.armadoCotizacion?.cantidad || 0;
+                armadoEnCoti.kits.forEach(kitEnArmado => {
+                    const cantidadKitEnArmado = kitEnArmado.armadoKits?.cantidad || 0;
+                    const kitDetallado = kitsConMateria.find(k => k.id === kitEnArmado.id);
 
-        })
-        armados.forEach(armaditos => {
-            const cantidadArmados = armaditos.armadoCotizacion.cantidad;
+                    if (kitDetallado && kitDetallado.itemKits) {
+                        kitDetallado.itemKits.forEach(item => {
+                            // ▼▼▼ CORRECCIÓN AQUÍ ▼▼▼
+                            const key = `${item.materium.id}`; // Usamos 'materium'
+                            const cantidadTotal = Number(item.medida) * Number(cantidadKitEnArmado) * Number(cantidadArmadoEnCoti);
 
-            armaditos.kits.forEach(kit => {
-                const cantidadKit = kit.armadoKits.cantidad;
-    
-                kit.materia.forEach(mt => {
-                    const key = `${mt.id}`
-                    const cantidadArmados = Number(mt.itemKit.medida) * Number(cantidadKit);
-                    
-                    if (!totalMateriaPrima[key]) {
-                        totalMateriaPrima[key] = {
-                            id: mt.id,
-                            nombre: mt.description,
-                            medidaOriginal: mt.medida,
-                            unidad: mt.unidad,
-                            cantidad: 0 
-                        };
+                            if (!totalMateriaPrima[key]) {
+                                totalMateriaPrima[key] = { 
+                                    id: item.materium.id, // Usamos 'materium'
+                                    nombre: item.materium.description, 
+                                    medidaOriginal: item.materium.medida, 
+                                    unidad: item.materium.unidad, 
+                                    cantidad: 0 
+                                };
+                            }
+                            totalMateriaPrima[key].cantidad += cantidadTotal;
+                        });
                     }
-    
-                    totalMateriaPrima[key].cantidad += cantidadArmados;
-                })
-    
-            })
+                });
+            });
+        });
 
-        })
-
-        Object.values(totalMateriaPrima);
         res.status(200).json({
             requisicion: searchReq,
             cantidades: Object.values(totalMateriaPrima)
-        });  
+        });
 
-
-    }catch(err){
+    } catch (err) {
         console.log(err);
-        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+        res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
     }
 }
+
 
 const getMultipleReq = async (req, res) => {
-    try{
-        // Recibimos IDs por Body
+    try {
         const { ids } = req.body;
-        if(!ids) return res.status(501).json({msg: 'Parámetro invalido'});
-        
+        if (!ids || !ids.length) return res.status(400).json({ msg: 'Parámetro inválido' });
+
+        // --- PASO 1: Traemos la estructura de TODAS las requisiciones seleccionadas ---
         const multiReq = await requisicion.findAll({
-            where: {
-                id: {
-                    [Op.in]: ids
-                }
-            },
+            where: { id: { [Op.in]: ids } },
             include: [{
                 model: cotizacion,
-                include:[{
-                    model: kit,
-                    include: [{
-                        model: materia,
-                    }],
-                    through: {
-                        attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
-                    }
-                },
-                {
-                    model: armado,
-                    include: [{
-                        model: kit,
-                        include:[{
-                            model: materia
-                        }]
-                    }],
-                    through: {
-                        attributes: ['cantidad', 'precio'] // o los campos que tengas en KitCotizacion
-                    }
-                }
-                ], 
+                include: [{
+                    model: areaCotizacion,
+                    include: [
+                        { model: kit, through: { attributes: ['cantidad'] } },
+                        { model: armado, through: { attributes: ['cantidad'] }, include: [{ model: kit, as: 'kits', through: { attributes: ['cantidad'] } }] }
+                    ]
+                }]
             }]
-        }).catch(err => {
-            console.log(err);
-            return null;
         });
-        if(!multiReq) return res.status(404).json({msg: 'No hemos encontrado estos resultados.'}); 
-        
-        
-        
-        const totalMateriaPrima  = {};
-        const totalRequsiciones = {};
-        multiReq.forEach(rr => {
-            const llave = `${rr.id}`
-            totalRequsiciones[llave] = {
-                id: rr.id,
-                nombre: rr.nombre
-            }
 
-            rr.cotizacion.kits.forEach(kit => {
-                const cantidadKit = kit.kitCotizacion.cantidad;
-    
-                kit.materia.forEach(mt => {
-                    const key = `${mt.id}`
-                    const cantidadTotal = Number(mt.itemKit.medida) * Number(cantidadKit);
-                    
-                    if (!totalMateriaPrima[key]) {
-                        totalMateriaPrima[key] = {
-                            id: mt.id,
-                            nombre: mt.description,
-                            medidaOriginal: mt.medida,
-                            unidad: mt.unidad,
-                            cantidad: 0 
-                        };
+        if (!multiReq || !multiReq.length) {
+            return res.status(404).json({ msg: 'No se encontraron resultados.' });
+        }
+
+        // --- PASO 2: Recolectamos todos los IDs de kits únicos de todas las requisiciones ---
+        const kitIds = new Set();
+        multiReq.forEach(req => {
+            req.cotizacion.areaCotizacions.forEach(area => {
+                area.kits.forEach(k => kitIds.add(k.id));
+                area.armados.forEach(a => a.kits.forEach(k => kitIds.add(k.id)));
+            });
+        });
+
+        // --- PASO 3: Hacemos UNA SOLA consulta para traer los detalles de TODOS esos kits ---
+        const kitsConMateria = await kit.findAll({
+            where: { id: [...kitIds] },
+            include: [{
+                model: itemKit,
+                include: [materia] // Usando el nombre de modelo 'materia'
+            }]
+        });
+
+        // --- PASO 4: Lógica de cálculo para agregar las cantidades ---
+        const totalMateriaPrima = {};
+
+        // Iteramos sobre cada requisición encontrada
+        multiReq.forEach(req => {
+            // Navegamos por su estructura para encontrar los kits y armados
+            req.cotizacion.areaCotizacions.forEach(area => {
+                // Procesamos los KITS directos
+                area.kits.forEach(kitEnCoti => {
+                    const cantidadKitEnCoti = kitEnCoti.kitCotizacion?.cantidad || 0;
+                    const kitDetallado = kitsConMateria.find(k => k.id === kitEnCoti.id);
+
+                    if (kitDetallado && kitDetallado.itemKits) {
+                        kitDetallado.itemKits.forEach(item => {
+                            const key = `${item.materium.id}`;
+                            const cantidadTotal = Number(item.medida) * Number(cantidadKitEnCoti);
+                            if (!totalMateriaPrima[key]) {
+                                totalMateriaPrima[key] = { id: item.materium.id, nombre: item.materium.description, medidaOriginal: item.materium.medida, unidad: item.materium.unidad, cantidad: 0 };
+                            }
+                            totalMateriaPrima[key].cantidad += cantidadTotal;
+                        });
                     }
-    
-                    totalMateriaPrima[key].cantidad += cantidadTotal;
-                })
-    
-            })
+                });
 
-            
-        })
+                // Procesamos los ARMADOS
+                area.armados.forEach(armadoEnCoti => {
+                    const cantidadArmadoEnCoti = armadoEnCoti.armadoCotizacion?.cantidad || 0;
+                    armadoEnCoti.kits.forEach(kitEnArmado => {
+                        const cantidadKitEnArmado = kitEnArmado.armadoKits?.cantidad || 0;
+                        const kitDetallado = kitsConMateria.find(k => k.id === kitEnArmado.id);
 
+                        if (kitDetallado && kitDetallado.itemKits) {
+                            kitDetallado.itemKits.forEach(item => {
+                                const key = `${item.materium.id}`;
+                                const cantidadTotal = Number(item.medida) * Number(cantidadKitEnArmado) * Number(cantidadArmadoEnCoti);
+                                if (!totalMateriaPrima[key]) {
+                                    totalMateriaPrima[key] = { id: item.materium.id, nombre: item.materium.description, medidaOriginal: item.materium.medida, unidad: item.materium.unidad, cantidad: 0 };
+                                }
+                                totalMateriaPrima[key].cantidad += cantidadTotal;
+                            });
+                        }
+                    });
+                });
+            });
+        });
 
-       
-        
-        // Object.values(totalMateriaPrima);
+        res.status(200).json({
+            // Puedes enviar las requisiciones si las necesitas en el frontend
+            // requisiciones: multiReq, 
+            cantidades: Object.values(totalMateriaPrima)
+        });
 
-        // res.status(200).json({
-        //     requisicion: Object.values(totalRequsiciones),
-        //     cantidades: Object.values(totalMateriaPrima)
-        // });  
-        res.status(200).json(multiReq)
-
-    }catch(err){
+    } catch (err) {
         console.log(err);
-        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+        res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
     }
 }
-
 
 module.exports = { 
     getAllRequisiciones, // Obtener todas las requsiciones

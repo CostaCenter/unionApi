@@ -15,7 +15,7 @@ const modelExtension = require('./model/extension'); // Extensiones para product
 const modelPrice = require('./model/price'); // Tabla de Precios Materia Prima
 const modelProductPrice = require('./model/productPrice'); // Tabla precios de producto terminado
 const modelKit = require('./model/kit'); // Tabla de kits
-
+const modelAreaKit = require('./model/areaKit');
 const modelItemKit = require('./model/itemKit'); // Item.
 
 const modelClient = require('./model/client'); // Cliente
@@ -89,6 +89,7 @@ modelProductPrice(sequelize);
 modelKit(sequelize);
 
 // Relacion itemKit
+modelAreaKit(sequelize);
 modelItemKit(sequelize);
 
 // CLIENTE Y COTIZACIÓN
@@ -119,7 +120,7 @@ modelPermisos(sequelize);
 modelUserPermission(sequelize);
 
 
-const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, itemKit,
+const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, areaKit, itemKit,
   client, versionCotizacion, cotizacion, notaCotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
   permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion
 } = sequelize.models; 
@@ -233,14 +234,46 @@ kit.belongsTo(extension);
 
 // KITS. MATERIA PRIMA Y KITS.
 // Relación muchos a muchos 
-kit.belongsToMany(materia, { 
-  through: 'itemKit', // Nombre de la tabla intermedia
-  foreignKey: 'kitId' 
+// --- Kit <--> ItemKit ---
+// Un Kit tiene muchos items (registros en la tabla intermedia).
+kit.hasMany(itemKit, {
+  foreignKey: 'kitId',
+});
+// Cada item de la tabla intermedia pertenece a un solo Kit.
+itemKit.belongsTo(kit, {
+  foreignKey: 'kitId'
 });
 
-materia.belongsToMany(kit, { 
-  through: 'itemKit', 
-  foreignKey: 'materiaId' 
+// --- Relación Principal: Un Kit tiene sus propias Áreas ---
+kit.hasMany(areaKit, { 
+    foreignKey: 'kitId',
+    onDelete: 'CASCADE' // Coincide con la base de datos
+});
+areaKit.belongsTo(kit, { 
+    foreignKey: 'kitId' 
+}); 
+
+
+
+// --- Materia <--> ItemKit ---
+// Una Materia Prima puede estar en muchos kits/items.
+materia.hasMany(itemKit, {
+  foreignKey: 'materiaId'
+});
+// Cada item de la tabla intermedia se refiere a una sola Materia Prima.
+itemKit.belongsTo(materia, {
+  foreignKey: 'materiaId'
+});
+
+
+// --- Area <--> ItemKit ---
+// Un Área puede contener muchos items.
+areaKit.hasMany(itemKit, {
+  foreignKey: 'areaId'
+});
+// Cada item de la tabla intermedia puede pertenecer a un Área.
+itemKit.belongsTo(areaKit, {
+  foreignKey: 'areaId'
 });
 
 user.hasMany(log, {
