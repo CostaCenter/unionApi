@@ -73,7 +73,7 @@ const getRequisicion = async (req, res) => {
             area.kits.forEach(kitEnCoti => {
                 const cantidadKitEnCoti = kitEnCoti.kitCotizacion?.cantidad || 0;
                 const kitDetallado = kitsConMateria.find(k => k.id === kitEnCoti.id);
-
+ 
                 if (kitDetallado && kitDetallado.itemKits) {
                     kitDetallado.itemKits.forEach(item => {
                         // ▼▼▼ CORRECCIÓN AQUÍ ▼▼▼
