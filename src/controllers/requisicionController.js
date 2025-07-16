@@ -66,12 +66,21 @@ const getRequisicion = async (req, res) => {
 
         // --- PASO 4: Lógica de cálculo CON LA CORRECCIÓN ---
         const totalMateriaPrima = {};
-        
+        const totalKits = {}; // <-- NUEVO: Objeto para consolidar los kits
+
         // Iteramos sobre la primera consulta para obtener las cantidades correctas
         searchReq.cotizacion.areaCotizacions.forEach(area => {
             // Procesamos Kits directos
             area.kits.forEach(kitEnCoti => {
                 const cantidadKitEnCoti = kitEnCoti.kitCotizacion?.cantidad || 0;
+
+                // <-- NUEVO: Lógica para consolidar el total de cada kit
+                const kitId = kitEnCoti.id;
+                if (!totalKits[kitId]) {
+                    totalKits[kitId] = { id: kitId, nombre: kitEnCoti.name, cantidad: 0 };
+                }
+                totalKits[kitId].cantidad += cantidadKitEnCoti;
+
                 const kitDetallado = kitsConMateria.find(k => k.id === kitEnCoti.id);
  
                 if (kitDetallado && kitDetallado.itemKits) {
@@ -125,7 +134,8 @@ const getRequisicion = async (req, res) => {
 
         res.status(200).json({
             requisicion: searchReq,
-            cantidades: Object.values(totalMateriaPrima)
+            cantidades: Object.values(totalMateriaPrima),
+            resumenKits: Object.values(totalKits)
         });
 
     } catch (err) {
