@@ -142,7 +142,7 @@ const getRequisicion = async (req, res) => {
         console.log(err);
         res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
     }
-}
+} 
 
 
 const getMultipleReq = async (req, res) => {
