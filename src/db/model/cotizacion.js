@@ -31,6 +31,12 @@ module.exports = sequelize => {
         // Version
         version: {
             type: DataTypes.STRING
+        },
+        estadoPago: { 
+            type: DataTypes.STRING
+        },
+        proceso: {
+            type: DataTypes.STRING
         }
     })  
 }

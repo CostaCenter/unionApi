@@ -20,6 +20,9 @@ const modelItemKit = require('./model/itemKit'); // Item.
 
 const modelClient = require('./model/client'); // Cliente
 const modelCotizacion = require('./model/cotizacion'); // Cotización
+const modelCondicionesPago = require('./model/condicionesPago'); // Condiciones de pago
+const modelPlanPago = require('./model/planPago'); // plan pago
+const modelPagoRecibido = require('./model/pagosRecibidos'); // Pagos recibidos
 const modelVersionCotizacion = require('./model/cotizacionVersion'); // Versión de las cotizaciones
 const modelNotasCotizacion = require('./model/notasCotización'); // Notas cotización
 const modelAreaCotizacion = require('./model/areaCotizacion');
@@ -95,6 +98,10 @@ modelItemKit(sequelize);
 // CLIENTE Y COTIZACIÓN
 modelClient(sequelize);
 modelCotizacion(sequelize);
+modelCondicionesPago(sequelize);
+modelPlanPago(sequelize);
+modelPagoRecibido(sequelize);
+
 modelVersionCotizacion(sequelize);
 modelNotasCotizacion(sequelize);
 modelAreaCotizacion(sequelize);
@@ -121,7 +128,7 @@ modelUserPermission(sequelize);
 
 
 const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, areaKit, itemKit,
-  client, versionCotizacion, cotizacion, notaCotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
+  client, versionCotizacion, cotizacion, condicionesPago, planPago, pagoRecibido, notaCotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
   permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion
 } = sequelize.models; 
 
@@ -292,6 +299,36 @@ client.hasMany(cotizacion, {
 });
 cotizacion.belongsTo(client); 
 
+// COTIZACIONES
+// 1. Una Condición de Pago tiene muchos Planes de Pago (cuotas)
+condicionesPago.hasMany(planPago, {
+    as: 'planes', // Alias para incluir los planes al consultar una condición
+});
+planPago.belongsTo(condicionesPago);
+
+// 2. Una Condición de Pago puede estar en muchas Cotizaciones
+condicionesPago.hasMany(cotizacion);
+cotizacion.belongsTo(condicionesPago);
+
+
+// 3. Una Cotización puede tener muchos Pagos Recibidos
+cotizacion.hasMany(pagoRecibido, {
+    as: 'pagos', // Alias para incluir los pagos al consultar una cotización
+});
+
+pagoRecibido.belongsTo(cotizacion);
+
+
+// 4. Un Pago Recibido puede pertenecer a un Plan de Pago específico (opcional)
+//    Esto sirve para saber exactamente qué cuota se está pagando.
+planPago.hasMany(pagoRecibido);
+pagoRecibido.belongsTo(planPago, {
+    as: 'planPagado', // Alias para saber a qué plan corresponde el pago
+});
+
+
+
+
 versionCotizacion.hasMany(cotizacion); // VersionCotización contiene muchas cotizaciones
 cotizacion.belongsTo(versionCotizacion);  // Relacionamos la cotizacion con versiones.
 
@@ -312,6 +349,9 @@ kit.belongsToMany(areaCotizacion, {
   through: kitCotizacion, 
   foreignKey: 'kitId' 
 }); 
+
+
+
 
 
 // areaCotizacion.belongsToMany(producto, { 

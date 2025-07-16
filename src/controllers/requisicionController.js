@@ -158,7 +158,8 @@ const getMultipleReq = async (req, res) => {
         if (!multiReq || !multiReq.length) {
             return res.status(404).json({ msg: 'No se encontraron resultados.' });
         }
-
+        
+        const cotizacionesConsultadas = multiReq.map(req => req.cotizacion);
         // --- PASO 2: Recolectamos todos los IDs de kits únicos de todas las requisiciones ---
         const kitIds = new Set();
         multiReq.forEach(req => {
@@ -179,6 +180,7 @@ const getMultipleReq = async (req, res) => {
 
         // --- PASO 4: Lógica de cálculo para agregar las cantidades ---
         const totalMateriaPrima = {};
+        const totalKits = {}; // Objeto para consolidar kits
 
         // Iteramos sobre cada requisición encontrada
         multiReq.forEach(req => {
@@ -187,6 +189,13 @@ const getMultipleReq = async (req, res) => {
                 // Procesamos los KITS directos
                 area.kits.forEach(kitEnCoti => {
                     const cantidadKitEnCoti = kitEnCoti.kitCotizacion?.cantidad || 0;
+
+                    const kitId = kitEnCoti.id;
+                    if (!totalKits[kitId]) {
+                        // Asumo que el nombre del kit está en la propiedad 'name'
+                        totalKits[kitId] = { id: kitId, nombre: kitEnCoti.name, cantidad: 0 };
+                    }
+                    totalKits[kitId].cantidad = Number(totalKits[kitId].cantidad) + Number(cantidadKitEnCoti);
                     const kitDetallado = kitsConMateria.find(k => k.id === kitEnCoti.id);
 
                     if (kitDetallado && kitDetallado.itemKits) {
@@ -226,6 +235,8 @@ const getMultipleReq = async (req, res) => {
         res.status(200).json({
             // Puedes enviar las requisiciones si las necesitas en el frontend
             // requisiciones: multiReq, 
+            requisicion: cotizacionesConsultadas,
+            resumenKits: Object.values(totalKits), // Se añade el nuevo resumen
             cantidades: Object.values(totalMateriaPrima)
         });
 
