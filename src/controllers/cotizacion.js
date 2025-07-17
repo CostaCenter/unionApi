@@ -329,6 +329,7 @@ const deleteCotizacion = async (req, res) =>  {
 
 // Add One versión to ToCotización
 const newVersionAboutCotizacion = async (req, res) => {
+    const transaction = await db.transaction();
     try{
         // Recibimos datos por body
         const { cotizacionId, userId } = req.body;
@@ -336,7 +337,7 @@ const newVersionAboutCotizacion = async (req, res) => {
         if(!cotizacionId || !userId) return res.status(400).json({msg: 'Los parámetros no son validos.'});
         // Caso contrario, avanzamos.
         
-        const transaction = await db.transaction();
+        
         
         // Consultamos Cotizacion
         const coti = await cotizacion.findByPk(cotizacionId, {
