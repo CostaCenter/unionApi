@@ -1,5 +1,5 @@
 const express = require('express');
-const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion, updateCotizacion, addService, deleteServiceOnCotizacion, giveDescuentoService } = require('../controllers/cotizacion');
+const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion, updateCotizacion, addService, deleteServiceOnCotizacion, giveDescuentoService, getAllCondiciones, newCondiction, addPlanToCondicion, giveCondiciones, getAllCotizacionPorAprobar, acceptCotizacionToRequisicion } = require('../controllers/cotizacion');
 const multer = require('multer');
 
  
@@ -9,6 +9,14 @@ const upload = multer({ storage: storage });
 const cloudinary = require('cloudinary').v2;
 
 const router = express.Router();
+
+// ADMINISTRACIÓN
+router.route('/admin/getAll')
+    .get(getAllCotizacionPorAprobar)
+router.route('/admin/accept/:cotiId')
+    .put(acceptCotizacionToRequisicion)
+
+    
 
 router.route('/search')
     .get(searchClientQuery)
@@ -22,6 +30,9 @@ router.route('/new')
     .post(newCotizacion)
     .put(updateCotizacion)
 
+router.route('/condiciones/give')
+    .put(giveCondiciones)
+
 router.route('/version/new')
     .post(newVersionAboutCotizacion)
 router.route('/version/updateToOficial')
@@ -30,6 +41,14 @@ router.route('/version/updateToOficial')
 router.route('/remove/cotizacion')
     .delete(deleteCotizacion) 
 
+// CONDICIONES
+router.route('/condiciones/get/all')
+    .get(getAllCondiciones)
+router.route('/condiciones/post/new')
+    .post(newCondiction)
+router.route('/condiciones/post/subNew')
+    .post(addPlanToCondicion)
+// -----------
 // Agregar nota  
 router.route('/post/register/new')
     .post(

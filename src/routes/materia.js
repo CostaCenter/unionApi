@@ -1,6 +1,6 @@
 const express = require('express');
 const { addMateria, updateMateria, getAllMateria, getItem, buscarPorQuery, clonarMateriaPrima, deleteMP } = require('../controllers/materiaControllers');
-const { getAllProducto, addProductoTerminado, updateProducto, getItemProducto, buscarPorQueryProducto, deleteProducto, clonarProducto } = require('../controllers/finalProduct');
+const { getAllProducto, addProductoTerminado, updateProducto, getItemProducto, buscarPorQueryProducto, deleteProducto, clonarProducto, getProduccionPorFecha, getProductosFiltrados, getProduccion } = require('../controllers/finalProduct');
 const { newService, updateService, getServices } = require('../controllers/serviciosCotizacion');
 
 const router = express.Router();
@@ -43,6 +43,12 @@ router.route('/producto/clonar/:productoId/:userId')
 
 router.route('/producto/searching')
     .get(buscarPorQueryProducto)
+
+
+router.route('/producto/get/graph/groups/:inicio/:fin')
+    .get(getProduccionPorFecha)
+router.route('/producto/get/filter/search')
+    .get(getProductosFiltrados)
 
 // SERVICIOS
 router.route('/services/search')

@@ -1,8 +1,10 @@
 const express = require('express');
-const { materia, proveedor, extension, price, kit, areaKit, itemKit, linea, categoria, percentage, Op, db, literal} = require('../db/db');
+const { materia, producto, user, proveedor, extension, price, kit, areaKit, itemKit, linea, categoria, percentage, Op, db, literal } = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 const { addLog } = require('./services/logServices');
+const dayjs = require('dayjs');
+const sequelize = kit.sequelize; // <-- Aquí obtienes la instancia
 
 
 // Buscamos kits para cotizar por Query
@@ -119,6 +121,155 @@ const searchKitsQuery = async(req, res) => {
 }
 // Obtener todos los kikts Terminados
 // Asegúrate de importar todos los modelos necesarios al inicio del archivo
+
+// Obtenemos producción
+const getProduccion = async (req, res) => {
+    try{
+        // Recibimos datos
+
+        const searchAll = await kit.count({where: { state: 'desarrollo' } });
+        const searchCompletos = await kit.count({where: { state: 'completa' } });
+
+        const searchProductos = await producto.count();
+        const searchLineas = await linea.count({where: {type: 'comercial'}})
+        const searchUsers = await user.count({where: {area: 'produccion'}})
+
+        const produccion = {
+            desarrollo: searchAll ? searchAll : 0,
+            completos: searchCompletos ? searchCompletos : 0,
+            productos: searchProductos ? searchProductos : 0,
+            lineas: searchLineas ? searchLineas : 0,
+            usuarios: searchUsers ? searchUsers : 0
+        }
+
+        res.status(200).json(produccion)
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+
+// Filtrar y agrupar
+const getKitPorFecha = async (req, res) => {
+    try {
+        const { inicio, fin} = req.params;
+        // Define el rango de fechas (por defecto, los últimos 6 meses)
+        const fechaFin = fin ? dayjs(fin).endOf('day') : dayjs().endOf('day');
+        const fechaInicio = inicio ?  dayjs(inicio).startOf('day')  : dayjs(fin).subtract(6, 'month').startOf('day');
+
+        const { categoriaId, lineaId, extensionId } = req.query;
+
+        // <-- CAMBIO: Se crea un objeto 'where' dinámico
+        const whereConditions = {
+            createdAt: {
+                [Op.between]: [fechaInicio.toDate(), fechaFin.toDate()]
+            }
+        };
+        // Si se proporciona un categoriaId, se añade al filtro
+        if (categoriaId) {
+            whereConditions.categoriumId = categoriaId;
+        }
+
+        if (extensionId) {
+            whereConditions.extensionId = extensionId;
+        }
+
+        // Si se proporciona un lineaId, se añade al filtro
+        if (lineaId) {
+            whereConditions.lineaId = lineaId;
+        }
+        const resultados = await kit.findAll({
+            // 1. Selecciona y formatea los campos que necesitas
+            attributes: [
+                // Extrae solo la fecha (YYYY-MM-DD) de la columna 'createdAt'
+                [sequelize.fn('DATE', sequelize.col('createdAt')), 'fecha'],
+                // Cuenta cuántos productos hay por cada fecha y lo nombra 'cantidad'
+                [sequelize.fn('COUNT', sequelize.col('id')), 'cantidad']
+            ],
+            // 2. Filtra por el rango de fechas
+            where: whereConditions,
+            // 3. Agrupa los resultados por la fecha extraída
+            group: [sequelize.fn('DATE', sequelize.col('createdAt'))],
+            // 4. Ordena los resultados cronológicamente
+            order: [[sequelize.fn('DATE', sequelize.col('createdAt')), 'ASC']],
+            // Opcional: raw:true devuelve objetos JSON planos, ideal para agregaciones
+            raw: true
+        });
+
+        
+        // 5. Convierte las fechas a objetos Date para MUI X Charts
+        const datosParaGrafica = resultados.map(item => ({
+            ...item,
+            fecha: new Date(item.fecha)
+        }));
+
+        res.status(200).json(datosParaGrafica);
+
+    } catch (err) {
+        console.error("Error al obtener datos de producción:", err);
+        res.status(500).json({ msg: 'Error en el servidor.' });
+    }
+};
+
+
+// Filtrar 
+const getKitsFiltrados = async (req, res) => {
+    try {
+        // 1. Obtenemos los filtros desde req.query (o req.body si lo prefieres)
+        const { fechaInicio, fechaFin, categoriaId, extensionId, lineaId } = req.query;
+
+        // 2. Construimos el objeto de condiciones 'where' dinámicamente
+        const whereConditions = {};
+
+        // --- Filtro por Rango de Fechas ---
+        if (fechaInicio && fechaFin) {
+            whereConditions.createdAt = {
+                [Op.between]: [
+                    dayjs(fechaInicio).startOf('day').toDate(),
+                    dayjs(fechaFin).endOf('day').toDate()
+                ]
+            };
+        }
+
+        // --- Filtro por Categoría ---
+        if (categoriaId) {
+            whereConditions.categoriumId = categoriaId;
+        }
+
+        if (extensionId) {
+            whereConditions.extensionId = extensionId;
+        }
+
+        // --- Filtro por Línea ---
+        if (lineaId) {
+            whereConditions.lineaId = lineaId;
+        }
+         
+        // 3. Hacemos la consulta a la base de datos
+        const kitsResults = await kit.findAll({
+            where: whereConditions,
+            // Incluimos los modelos relacionados para tener la información completa
+            include: [
+                { model: categoria }, // Asume que tienes un alias 'categoria'
+                { model: linea },       // Asume que tienes un alias 'linea'
+                { model: extension }
+            ],
+            order: [['createdAt', 'DESC']] // Ordena los más recientes primero
+        });
+
+        if (!kitsResults || kitsResults.length === 0) {
+            return res.status(404).json({ msg: 'No se encontraron productos con los filtros aplicados.' });
+        }
+
+        res.status(200).json(kitsResults);
+
+    } catch (err) {
+        console.error("Error al filtrar productos:", err);
+        res.status(500).json({ msg: 'Error en el servidor.' });
+    }
+};
+
 
 const getAllKitCompleted = async(req, res) => {
     try{
@@ -713,6 +864,9 @@ const deleteKit = async(req, res) => {
 module.exports = { 
     searchKitsQuery, // SearchKits With Query
     addKit, // Agregamos KIT.
+    getProduccion, // Obtenemos todo
+    getKitPorFecha, // Obtenemos resultados por fecha
+    getKitsFiltrados, // Obtenemos grupo para gráfica
     addSegmento, // Nuevo segmento
     updateSegmento, // Actualizar segmento
     addItem, // Agregar Item

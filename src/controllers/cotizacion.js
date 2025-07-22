@@ -1,5 +1,6 @@
 const express = require('express');
-const { client, service, serviceCotizacion, kit, itemKit, extension, producto, materia, cotizacion, versionCotizacion, notaCotizacion, armado, armadoCotizacion, kitCotizacion, productoCotizacion, areaCotizacion, user, db} = require('../db/db');
+const { client, service, serviceCotizacion, kit, itemKit, extension, producto, materia, cotizacion, versionCotizacion, notaCotizacion, armado, armadoCotizacion, kitCotizacion, productoCotizacion, areaCotizacion, user,
+    condicionesPago, planPago, db} = require('../db/db');
 const { Op } = require('sequelize');
 const { createCotizacion, addItemToCotizacionServices, addSuperKitToCotizacionServices, addProductoToCotizacionServices, addServiceToCotizacionServices } = require('./services/cotizacionServices');
 const { createRequisicion } = require('./services/requsicionService');
@@ -9,6 +10,36 @@ const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
+
+// ADMINISTRACIÓN
+const getAllCotizacionPorAprobar = async(req, res) => {
+    try{
+            const searchCotizaciones = await cotizacion.findAll({
+                where: {
+                    state: 'anticipo'
+                },
+                attributes: { exclude: ['updatedAt']},
+                include:[{
+                    model: condicionesPago 
+                }, {model: client}],
+                 
+                order: [
+                    ['createdAt', 'DESC'], // Orden global por creación de la cotización
+                ]
+            }).catch(err => {
+                console.log(err);
+                return null
+            });
+            // Validamos contenido.
+            if(!searchCotizaciones) return res.status(404).json({msg: 'No hay cotizaciones'});
+            // Caso contrario
+            res.status(200).json(searchCotizaciones);
+        
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un erro en la principal.'});
+    }
+}
 
 // Buscar cliente para cotizacion
 const searchClientQuery = async(req, res) => {
@@ -179,7 +210,9 @@ const getCotizacion = async(req, res) => {
         // Caso contrario, consultados
         const searchCoti = await cotizacion.findByPk(cotiId, {
             attributes: { exclude: ['updatedAt']},
-            include:[ {model: areaCotizacion,
+            include:[{
+                model: condicionesPago
+            }, {model: areaCotizacion, 
                 include:[
                     // 1. Mantenemos la relación belongsToMany para 'kit' como la tenías
                     { 
@@ -273,6 +306,37 @@ const updateCotizacion = async (req, res) => {
             time,
         }, {
             where: {
+                id: cotizacionId
+            }
+        })
+        .catch(err => {
+            console.log(err);
+            return null;
+        });
+
+        if(!add) return res.status(502).json({msg: 'No hemos logrado actualizar esto.'});
+        // Caso contrario, devolvemos cotización
+        res.status(201).json({msg: 'Actualizado con éxito'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+// Dar condiciones y fecha
+const giveCondiciones = async (req, res) => {
+    try{
+        // Recibimos datos por body.
+        const { cotizacionId, userId, days, condicionId } = req.body;
+        
+        // Validamos 
+        if(!cotizacionId || !condicionId || !days) return res.status(501).json({msg: 'Los parámetros no son validos.'});
+         
+        // Procedemos a crear cotización
+        const add = await cotizacion.update({
+            days,
+            condicionesPagoId: condicionId,
+        }, {
+            where: { 
                 id: cotizacionId
             }
         })
@@ -921,7 +985,7 @@ const deleteProductOnCotizacion = async (req, res) => {
 }
 
 // Aprobadar cotizaciónn
-const acceptCotizacion = async (req, res) => {
+const acceptCotizacionToRequisicion = async (req, res) => {
     try{
         // Recibimos la cotización por params
         const { cotiId } = req.params;
@@ -950,7 +1014,7 @@ const acceptCotizacion = async (req, res) => {
 
             return newRequsicion;
         })
-        .catch(err => {
+        .catch(err => { 
             console.log(err);
             return null;
         });
@@ -958,6 +1022,38 @@ const acceptCotizacion = async (req, res) => {
         if(updateCoti == 501) return res.status(501).json({msg: 'Parametros no son validos.'});
         if(updateCoti == 502) return res.status(502).json({msg: 'No hemos logrado generar requsición'})
         res.status(201).json({msg: 'Requisición enviada'})
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+} 
+// Aprobadar cotizaciónn
+const acceptCotizacion = async (req, res) => {
+    try{
+        // Recibimos la cotización por params
+        const { cotiId } = req.params;
+        // Validamos
+        if(!cotiId) return res.status(501).json({msg: 'El parámetro no es valido.'});
+        // Caso contrario, avanzamos
+
+        const searchCoti = await cotizacion.findByPk(cotiId).catch(err => null);
+        // Validamos
+        if(!searchCoti) return res.status(404).json({msg: 'No hemos encontrado esta cotización'});
+        
+        // Caso contrario, avanzamos
+        const updateCoti = await cotizacion.update({
+            state: 'anticipo'
+        }, {
+            where: {
+                id: cotiId
+            }
+        })
+        .catch(err => {
+            console.log(err);
+            return null;
+        });
+        res.status(201).json({msg: 'Cotización enviada a financiero'})
 
     }catch(err){
         console.log(err);
@@ -1202,10 +1298,92 @@ const addRegisterToCotizacion = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
+
+// Obtener todas las condiciones
+const getAllCondiciones = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const getCondiciones = await condicionesPago.findAll({
+            where: {
+                state: true
+            },
+            include:[{
+                model: planPago,
+                as: 'planes'
+            }] 
+        }); 
+
+        if(!getCondiciones) return res.status(404).json({msg: 'No hemos logrado obtener esto.'});
+        // Caso contrario
+        res.status(200).json(getCondiciones)
+    }catch(err){  
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+// Crear condiciones de pago
+const newCondiction = async (req, res) => {
+    try{
+        // Recibimos por body
+        const { nombre, type, plazo, description } = req.body;
+
+        // Validamos la entrada
+        if(!nombre || !type || !plazo) return res.status(500).json({msg: 'Los parámetros no son validos'});
+        
+        // Caso contrario, avanzamos
+        const addNote = await condicionesPago.create({
+            nombre,
+            type,
+            plazo,
+            description,
+            state: true
+        });
+
+        if(!addNote) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
+        // Caso contrario
+        res.status(201).json(addNote)
+    
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+// Agregar plan de pagos
+const addPlanToCondicion = async (req, res) => {
+    try{
+        // Recibimos dato por body
+        const { porcentaje, description, momentoPago, condicionesPagoId } = req.body;
+        // Validamos la entrada
+        if(!porcentaje || !description || !momentoPago) return res.status(400).json({msg: 'Ha ocurrido un error en la principal.'});
+        // Avanzamos
+
+        const listCount = await planPago.count({ where: { condicionesPagoId } });
+        const order = listCount + 1;
+        const addPlan = await planPago.create({
+            orden: order,
+            porcentaje,
+            description,
+            momentoPago,
+            state: true,
+            condicionesPagoId
+        })
+        // Validamos la respuesta
+        if(!addPlan) return res.status(502).json({msg: 'No hemos logrado crear este plan de pago.'});
+        // Caso contrario, enviamos respuesta
+        res.status(201).json(addPlan);
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+
 module.exports = { 
     getCotizacion, // Obtenemos una cotización por su Id
     newCotizacion, // Crear una nueva cotización
     updateCotizacion, // Actualizar cotizacion
+    giveCondiciones, // Dar descuento
     newVersionAboutCotizacion, // Versión de cotizacion
     beOfficialVersion, // Convertir a versión oficial
     deleteCotizacion, // Eliminar cotización
@@ -1230,4 +1408,11 @@ module.exports = {
     addService, // Dar precio a producto
     deleteServiceOnCotizacion, // Eliminar cotización
     giveDescuentoService, // Dar descuento.
+
+    // Condiciones
+    getAllCondiciones, // Obtener condiciones
+    newCondiction, // Nueva condición
+    addPlanToCondicion, // Añadir condiciones
+    getAllCotizacionPorAprobar, // COTIZACIONES PENDIENTES DE APROBACIÓN
+    acceptCotizacionToRequisicion, // Aprobar desde financiero
 }  

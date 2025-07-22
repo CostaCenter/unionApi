@@ -37,6 +37,9 @@ module.exports = sequelize => {
         },
         proceso: {
             type: DataTypes.STRING
+        },
+        days: {
+            type: DataTypes.INTEGER
         }
     })  
 }
