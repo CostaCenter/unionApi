@@ -38,7 +38,7 @@ const getRequisicion = async (req, res) => {
         const searchReq = await requisicion.findByPk(reqId, {
             include: [{
                 model: cotizacion,
-                include: [{
+                include: [{model: client},{
                     model: areaCotizacion,
                     include: [
                         { model: kit, through: { attributes: ['cantidad', 'precio'] } },
