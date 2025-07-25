@@ -86,7 +86,7 @@ const getAllCotizaciones = async(req, res) => {
             const searchCotizaciones = await cotizacion.findAll({
                 where: {
                     state: {
-                        [Op.in]: ['aprobada', 'desarrollo']
+                        [Op.in]: ['aprobada', 'desarrollo', 'anticipo']
                     }
                 },
                 attributes: { exclude: ['updatedAt']},
@@ -142,7 +142,7 @@ const getAllCotizaciones = async(req, res) => {
                         where: {
                             userId,
                             state: {
-                                [Op.in]: ['aprobada', 'desarrollo']
+                                [Op.in]: ['aprobada', 'desarrollo', 'anticipo']
                             }
                         },
                         attributes: { exclude: ['updatedAt']},

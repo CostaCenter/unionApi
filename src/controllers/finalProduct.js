@@ -512,7 +512,32 @@ const addPriceProducto = async(req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
- 
+
+
+// Desactivar número
+const updateToInactivePCMPPT = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { priceId} = req.body;
+        // Validamos la entrada
+        if(!priceId ) return res.status(400).json({msg: 'Recibimos datos por body'});
+        // Avanzamos
+        const updateThat = await productPrice.update({
+            state: 'changed'
+        }, {
+            where: {
+                id: priceId
+            }
+        });
+        if(!updateThat) return res.status(502).json({msg:'No logrados actualizar esto.'});
+        // Caso contrario:
+        res.status(201).json({msg: 'Actualizado con éxito'})
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
 module.exports = { 
     addProductoTerminado, // Agregar producto terminado
     getProduccionPorFecha, // Obtener grupo de productos creados
@@ -525,4 +550,5 @@ module.exports = {
     addPriceProducto, // Agregamos precio
     buscarPorQueryProducto, // Search by query
     updatePricesProductos, // Update prices
+    updateToInactivePCMPPT, // Desactivar precio producto
 }

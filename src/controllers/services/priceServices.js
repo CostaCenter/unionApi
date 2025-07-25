@@ -157,8 +157,7 @@ const addPricePT = async (productId, pvId, valor, iva, descuentos) => {
 
 
         // Caso contrario, procedemos a asignar un precio...
-         
-            const addPrice = await productPrice.create({
+        const addPrice = await productPrice.create({
             productoId: productId, 
             proveedorId: pvId,
             valor,
