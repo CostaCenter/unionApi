@@ -83,6 +83,39 @@ const getAllCotizacionPorAprobar = async(req, res) => {
     }
 }
 
+
+// ADMINISTRACIÓN
+const getAllCotizacionForProduccion = async(req, res) => {
+    try{
+            const searchCotizaciones = await cotizacion.findAll({
+                where: {
+                    state: {
+                        [Op.in]: ['produccion']
+                    },
+                },
+                attributes: { exclude: ['updatedAt']},
+                include:[{
+                    model: condicionesPago 
+                }, {model: client}],
+                 
+                order: [
+                    ['createdAt', 'DESC'], // Orden global por creación de la cotización
+                ]
+            }).catch(err => {
+                console.log(err);
+                return null
+            });
+            // Validamos contenido.
+            if(!searchCotizaciones) return res.status(404).json({msg: 'No hay cotizaciones'});
+            // Caso contrario
+            res.status(200).json(searchCotizaciones);
+        
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un erro en la principal.'});
+    }
+}
+
 // Buscar cliente para cotizacion
 const searchClientQuery = async(req, res) => {
     try {
@@ -1135,6 +1168,70 @@ const comeBackCotizacionToComercial = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
     }
 } 
+// Devolver cotización a comerciales
+const FinishCotizacion = async (req, res) => {
+    try{
+        // Recibimos la cotización por params
+        const { cotiId } = req.params;
+        // Validamos
+        if(!cotiId) return res.status(501).json({msg: 'El parámetro no es valido.'});
+        // Caso contrario, avanzamos
+
+        const searchCoti = await cotizacion.findByPk(cotiId).catch(err => null);
+        // Validamos
+        if(!searchCoti) return res.status(404).json({msg: 'No hemos encontrado esta cotización'});
+        
+        // Caso contrario, avanzamos
+        const updateCoti = await cotizacion.update({
+            state: 'produccion'
+        }, {
+            where: {
+                id: cotiId
+            }
+        })
+        .catch(err => {
+            console.log(err);
+            return null;
+        });
+        res.status(201).json({msg: 'Cotización enviada a comerciales'})
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+} 
+// Devolver cotización a comerciales
+const ListoCotizacionState = async (req, res) => {
+    try{
+        // Recibimos la cotización por params
+        const { cotiId } = req.params;
+        // Validamos
+        if(!cotiId) return res.status(501).json({msg: 'El parámetro no es valido.'});
+        // Caso contrario, avanzamos
+
+        const searchCoti = await cotizacion.findByPk(cotiId).catch(err => null);
+        // Validamos
+        if(!searchCoti) return res.status(404).json({msg: 'No hemos encontrado esta cotización'});
+        
+        // Caso contrario, avanzamos
+        const updateCoti = await cotizacion.update({
+            state: 'listo'
+        }, {
+            where: {
+                id: cotiId
+            }
+        })
+        .catch(err => {
+            console.log(err);
+            return null;
+        });
+        res.status(201).json({msg: 'Cotización enviada a comerciales'})
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+} 
 
 // Dividir cotización por áreas
 const addAreaToCotizacion = async (req, res) =>  {
@@ -1492,5 +1589,7 @@ module.exports = {
     acceptCotizacionToRequisicion, // Aprobar desde financiero
     comeBackCotizacionToComercial, // Devolver cotización a comerciales
     generarPdf, // Generar PDF
-    
+    FinishCotizacion, // enviar cotización a produccion
+    getAllCotizacionForProduccion, // VER DE PRODUCCIÓN
+    ListoCotizacionState, // COTIZACIÓN TERMINO SU PROCESO
 }  
