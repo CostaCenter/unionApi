@@ -1,5 +1,5 @@
 const express = require('express');
-const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion, updateCotizacion, addService, deleteServiceOnCotizacion, giveDescuentoService, getAllCondiciones, newCondiction, addPlanToCondicion, giveCondiciones, getAllCotizacionPorAprobar, acceptCotizacionToRequisicion } = require('../controllers/cotizacion');
+const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion, updateCotizacion, addService, deleteServiceOnCotizacion, giveDescuentoService, getAllCondiciones, newCondiction, addPlanToCondicion, giveCondiciones, getAllCotizacionPorAprobar, acceptCotizacionToRequisicion, generarPdf, comeBackCotizacionToComercial } = require('../controllers/cotizacion');
 const multer = require('multer');
 
  
@@ -15,9 +15,13 @@ router.route('/admin/getAll')
     .get(getAllCotizacionPorAprobar)
 router.route('/admin/accept/:cotiId')
     .put(acceptCotizacionToRequisicion)
+router.route('/admin/comeBack/:cotiId')
+    .put(comeBackCotizacionToComercial)
 
     
-
+router.route('/generatePdf')
+    .post(generarPdf)
+    
 router.route('/search')
     .get(searchClientQuery)
 

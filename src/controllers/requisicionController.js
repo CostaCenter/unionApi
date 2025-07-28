@@ -7,6 +7,11 @@ const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, chang
 const getAllRequisiciones = async (req, res) => {
     try {
         const searchReq = await requisicion.findAll({
+            where:{
+                estado: {
+                    [Op.in]: ['pendiente', 'comprando']
+                }
+            },
             include: [{
                 model: cotizacion,
                 attributes: ['id', 'name', 'state', 'createdAt'], // Traemos solo datos clave
@@ -256,8 +261,34 @@ const getMultipleReq = async (req, res) => {
     }
 }
 
+const changeStateOfReq = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { reqId, state} = req.body;
+        // Validamos que lo datos entren correctamente
+        if(!reqId || !state) return res.status(400).json({msg: 'Los parámetros no son validos'});
+        // Caso contrario, avanzamos
+        // Generamos la consultado para actualizar
+        const updateReq = await requisicion.update({
+            estado: state
+        }, {
+            where: {
+                id: reqId
+            }
+        });
+        // Validamos la respuesta de la actualización.
+        if(!updateReq) return res.status(502).json({msg: 'No hemos logrado actualizar esto'});
+        // caso contrario
+        res.status(200).json({msg: 'Actualizado con éxito'})
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
 module.exports = { 
     getAllRequisiciones, // Obtener todas las requsiciones
     getRequisicion, // Obtener una requisición 
     getMultipleReq, // Multiples requisiciones
+    changeStateOfReq, // Cambiar de estado la requisicións
 }

@@ -10,13 +10,55 @@ const multer = require('multer');
 const cloudinary = require('cloudinary').v2;
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
+const puppeteer = require('puppeteer');
+
+// const 
+const generarPdf = async(req, res) => { 
+    try{
+       const { htmlContent, pageSize = 'A4' } = req.body; // Recibes el HTML y el tamaño
+
+        if (!htmlContent) {
+            return res.status(400).send('No se proporcionó contenido HTML.');
+        }
+
+            const browser = await puppeteer.launch({ headless: true });
+            const page = await browser.newPage();
+
+            // 1. Establece el contenido de la página
+            await page.setContent(htmlContent, { waitUntil: 'networkidle0' });
+
+            // 2. Genera el PDF con opciones
+            const pdfBuffer = await page.pdf({
+            format: pageSize, // 'A4', 'Letter', etc.
+            printBackground: true, // Incluye fondos y colores
+            margin: { // Define los márgenes
+                top: '20mm',
+                right: '20mm',
+                bottom: '20mm',
+                left: '20mm',
+            },
+            });
+
+            await browser.close();
+
+            // 3. Envía el PDF de vuelta al cliente
+            res.setHeader('Content-Type', 'application/pdf');
+            res.setHeader('Content-Disposition', 'attachment; filename=documento.pdf');
+            res.send(pdfBuffer); 
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
 
 // ADMINISTRACIÓN
 const getAllCotizacionPorAprobar = async(req, res) => {
     try{
             const searchCotizaciones = await cotizacion.findAll({
                 where: {
-                    state: 'anticipo'
+                    state: {
+                        [Op.in]: ['anticipo', 'aprobada']
+                    },
                 },
                 attributes: { exclude: ['updatedAt']},
                 include:[{
@@ -1061,6 +1103,39 @@ const acceptCotizacion = async (req, res) => {
     }
 } 
 
+// Devolver cotización a comerciales
+const comeBackCotizacionToComercial = async (req, res) => {
+    try{
+        // Recibimos la cotización por params
+        const { cotiId } = req.params;
+        // Validamos
+        if(!cotiId) return res.status(501).json({msg: 'El parámetro no es valido.'});
+        // Caso contrario, avanzamos
+
+        const searchCoti = await cotizacion.findByPk(cotiId).catch(err => null);
+        // Validamos
+        if(!searchCoti) return res.status(404).json({msg: 'No hemos encontrado esta cotización'});
+        
+        // Caso contrario, avanzamos
+        const updateCoti = await cotizacion.update({
+            state: 'desarrollo'
+        }, {
+            where: {
+                id: cotiId
+            }
+        })
+        .catch(err => {
+            console.log(err);
+            return null;
+        });
+        res.status(201).json({msg: 'Cotización enviada a comerciales'})
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+} 
+
 // Dividir cotización por áreas
 const addAreaToCotizacion = async (req, res) =>  {
     try{ 
@@ -1415,4 +1490,7 @@ module.exports = {
     addPlanToCondicion, // Añadir condiciones
     getAllCotizacionPorAprobar, // COTIZACIONES PENDIENTES DE APROBACIÓN
     acceptCotizacionToRequisicion, // Aprobar desde financiero
+    comeBackCotizacionToComercial, // Devolver cotización a comerciales
+    generarPdf, // Generar PDF
+    
 }  

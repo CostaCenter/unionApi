@@ -1,5 +1,5 @@
 const express = require('express');
-const { getAllRequisiciones, getRequisicion, getMultipleReq } = require('../controllers/requisicionController');
+const { getAllRequisiciones, getRequisicion, getMultipleReq, changeStateOfReq } = require('../controllers/requisicionController');
 const router = express.Router();
 
 
@@ -11,5 +11,8 @@ router.route('/get/:reqId')
 
 router.route('/get/multiReq')
     .post(getMultipleReq)
+
+router.route('/put/estado') // Actualizamos requisición
+    .put(changeStateOfReq)
 module.exports = router; 
  
