@@ -11,7 +11,7 @@ const sequelize = kit.sequelize; // <-- Aquí obtienes la instancia
 const searchKitsForCoti = async (req, res) => {
     try{
         // Recibo dato por query
-        const { query } = req.query; // Obtiene el parámetro de búsqueda desde la URL
+        const { query,  cateriumId, lineaId  } = req.query; // Obtiene el parámetro de búsqueda desde la URL
 
         if (!query) {
             return res.status(400).json({ message: "Debes proporcionar un término de búsqueda." });
@@ -31,6 +31,16 @@ const searchKitsForCoti = async (req, res) => {
             whereClause.name = { [Op.iLike]: `%${query}%` };
         }
 
+         // Si llega un 'cateriumId', se añade al filtro
+        if (cateriumId) {
+            whereClause.categoriumId = cateriumId; // Ajusta este nombre de campo si es necesario
+        }
+
+        // Si llega un 'lineaId', se añade al filtro
+        if (lineaId) {
+            whereClause.lineaId = lineaId;
+
+        }
 
         const kits = await kit.findAll({
             where: whereClause, 
