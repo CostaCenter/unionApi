@@ -600,6 +600,27 @@ const addSegmento = async(req, res) => {
     }
 }
 
+// Eliminar segmento
+const deleteSegmento = async (req, res) => {
+    try{
+        // Recibimos dato por body
+         const { segmentoId } = req.params;
+         console.log('entra')
+        // Validamos
+        if(!segmentoId ) return res.status(501).json({msg: 'Los parámetros no son validos'});
+        // Caso contrario, avanzamos...
+        const deletee = await areaKit.destroy({
+            where: {
+                id: segmentoId
+            }
+        })
+        if(!deletee) return res.status(502).json({msg: 'Ha ocurrido un error '})
+        res.status(200).json({msg: 'Eliminado con exito'})
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
 // Crear nuevo segmento para un kit
 const updateSegmento = async(req, res) => {
     try{
@@ -891,4 +912,5 @@ module.exports = {
     getAllKitCompleted, // Obtener solo kits completos
     updateItemOnKit, // Update ItemKits
     searchKitsForCoti, // Buscamos kits para cotizar
+    deleteSegmento, // Eliminar segmento
 }

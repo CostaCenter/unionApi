@@ -11,7 +11,9 @@ const cloudinary = require('cloudinary').v2;
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 const puppeteer = require('puppeteer');
-
+const ejs = require('ejs');
+const path = require('path');
+const fs = require('fs');
 // const 
 const generarPdf = async(req, res) => { 
     try{
@@ -51,6 +53,57 @@ const generarPdf = async(req, res) => {
     }
 }
 
+
+// GET PDF
+const generatePDF = async (req, res) => {
+  try {
+    const htmlPath = path.join(__dirname, './tm/cotizacion.ejs');
+const rawCss = fs.readFileSync(path.join(__dirname, './tm/cotizacion.css'), 'utf8');
+const css = `<style>${rawCss}</style>`;
+    const { data } = req.body
+    // Inyecta el CSS embebido dentro del <head> del HTML
+    const html = await ejs.renderFile(htmlPath, {data, css}, { async: true });    // 2. Lanzar navegador
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+
+    const page = await browser.newPage();
+
+    // 3. Cargar HTML
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+
+    // 4. Generar PDF
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: { 
+        top: '60px',
+        bottom: '60px',
+        left: '40px',
+        right: '40px',
+      },
+    });
+
+    await browser.close();
+
+    // 5. Verifica si el buffer es válido
+    if (!pdfBuffer || pdfBuffer.length < 1000) {
+      console.error('⚠️ PDF generado es sospechosamente pequeño o inválido.');
+      return res.status(500).send('PDF inválido');
+    }
+
+    res.set({
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'attachment; filename="cotizacion.pdf"',
+    });
+
+    res.status(200).end(pdfBuffer); // ✅ usa .end() en lugar de .send()
+  } catch (err) {
+    console.error('PDF Error:', err);
+    res.status(500).send('Error generando PDF');
+  }
+};
 // ADMINISTRACIÓN
 const getAllCotizacionPorAprobar = async(req, res) => {
     try{
@@ -1592,4 +1645,7 @@ module.exports = {
     FinishCotizacion, // enviar cotización a produccion
     getAllCotizacionForProduccion, // VER DE PRODUCCIÓN
     ListoCotizacionState, // COTIZACIÓN TERMINO SU PROCESO
+
+
+    generatePDF, // GENERAR PDF
 }  

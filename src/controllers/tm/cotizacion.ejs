@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+   <%- css %>
+
+</head>
+<body>
+  <div class="logo">
+    <img class="img" src="https://metalicascosta.com.co/assets/img/logo_metalicas_costa.png" alt="">
+  </div>
+  <div class="header">
+    <div class="containerHeader">
+      <div class="box Short">
+        <div class="item">
+          <div class="title">
+            <h3>NIT</h3>
+          </div>
+          <div class="data">
+            <h4>901165150-3</h4>
+          </div>
+        </div>
+        <div class="item">
+          <div class="title">
+            <h3>DIRECCIÓN</h3>
+          </div>
+          <div class="data">
+            <h4>CL 11 13 15</h4>
+          </div>
+        </div>
+        <div class="item">
+          <div class="title">
+            <h3>TELÉFONO</h3>
+          </div>
+          <div class="data">
+            <h4>3739940</h4>
+          </div>
+        </div>
+      </div>
+
+      <div class="box Longer">
+        <div class="item">
+          <div class="title">
+            <h3>NRO. COTIZACIÓN</h3>
+          </div>
+          <div class="data">
+            <h4><%= data.cotizacion.numero %></h4>
+          </div>
+        </div>
+        <div class="item">
+          <div class="title">
+            <h3>FECHA</h3>
+          </div>
+          <div class="data">
+            <h4><%= data.cotizacion.fecha %></h4>
+          </div>
+        </div>
+        <div class="item">
+          <div class="title">
+            <h3>ASESOR COMERCIAL</h3>
+          </div>
+          <div class="data">
+            <h4><%= data.asesor.nombre %></h4>
+          </div>
+        </div>
+        <div class="item">
+          <div class="title">
+            <h3>CORREO ASESOR</h3>
+          </div>
+          <div class="data">
+            <h4><%= data.asesor.correo %></h4>
+          </div>
+        </div>
+
+         <div class="item">
+          <div class="title">
+            <h3>TELÉFONO ASESOR</h3>
+          </div>
+          <div class="data">
+            <h4><%= data.asesor.telefono %></h4>
+          </div>
+        </div>
+      </div>
+    </div>
+
+
+    <div class="containerHeader">
+      <div class="box Short">
+        <div class="item">
+          <div class="title">
+            <h3>CLIENTE</h3>
+          </div>
+          <div class="data">
+            <h4><%= data.cliente.nombre %></h4>
+          </div>
+        </div>
+        <div class="item">
+          <div class="title">
+            <h3>DIRECCIÓN</h3>
+          </div>
+          <div class="data">
+            <h4><%= data.cliente.direccion %></h4>
+          </div>
+        </div>
+        <div class="item">
+          <div class="title">
+            <h3>CIUDAD</h3>
+          </div>
+          <div class="data">
+            <h4><%= data.cliente.ciudad %></h4>
+          </div>
+        </div>
+        <div class="item">
+          <div class="title">
+            <h3>TELÉFONO</h3>
+          </div>
+          <div class="data">
+            <h4><%= data.cliente.telefono %></h4>
+          </div>
+        </div>
+      </div>
+
+      <div class="box Longer">
+        <div class="item">
+          <div class="title">
+            <h3>MONEDA</h3>
+          </div>
+          <div class="data">
+            <h4>PESOS</h4>
+          </div>
+        </div>
+        <div class="item">
+          <div class="title">
+            <h3>VALIDEZ DE LA OFERTA</h3>
+          </div>
+          <div class="data">
+            <h4><%= data.condiciones.validez %> DÍAS</h4>
+          </div>
+        </div>
+        <div class="item">
+          <div class="title">
+            <h3>FORMA DE PAGO</h3>
+          </div>
+          <div class="data">
+            <h4><%= data.condiciones.formaPago %></h4>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  
+  <div class="containerCotizacion">
+    <% data.areas.forEach(area => { %>
+    <div class="area-section">
+      <div class="area-title">Jonathan 1</div>
+        <table class="table">
+          <thead>
+            <tr>
+              <th>REFERENCIA</th>
+              <th>DESCRIPCIÓN</th>
+              <th>CANTIDAD</th>
+              <th>VALOR UNITARIO</th>
+              <th>SUBTOTAL</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mini">R-001</td>
+              <td class="large">Mostrador blanc dsdsad dfdsfsd o</td>
+              <td class="corta">1</td>
+              <td class="corta">$1.500.000</td>
+              <td class="corta">$1.500.000</td>
+            </tr>
+          
+          </tbody>
+          <thead style="margin-top: 30px;">
+            <tr>
+              <th></th>
+              <th></th>
+              <th></th>
+              <th></th>
+              <th>VALOR ÁREA</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="mini"></td>
+              <td class="large"></td>
+              <td class="corta"></td>
+              <td class="corta"></td>
+              <td class="middle">$800.000</td>
+            </tr> 
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <% }) %>
+
+  <div class="total">
+   <table class="table">
+      <thead>
+        <tr>
+          <th>SUBTOTAL INICIAL</th>
+          <th>DESCUENTO</th>
+          <th>SUBTOTAL CON DESCUENTO</th>
+          <th>VALOR IVA</th>
+          <th>TOTAL</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mini">$312.787</td>
+          <td class="large">$0 </td>
+          <td class="corta">$312.787</td>
+          <td class="corta">$59.430 </td>
+          <td class="middle">$372.217</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</body>
+</html>
