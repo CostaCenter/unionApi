@@ -604,10 +604,23 @@ const addSegmento = async(req, res) => {
 const deleteSegmento = async (req, res) => {
     try{
         // Recibimos dato por body
-         const { segmentoId } = req.params;
-         console.log('entra')
+        const { segmentoId } = req.params;
+        
         // Validamos
         if(!segmentoId ) return res.status(501).json({msg: 'Los parámetros no son validos'});
+        // Caso contrario, avanzamos...
+        const deleteKits = await itemKit.destroy({
+            where: {
+                areaId: segmentoId
+            }
+        })
+        const deleteProducto = await itemKit.destroy({
+            where: {
+                areaId: segmentoId
+            }
+        })
+
+        
         // Caso contrario, avanzamos...
         const deletee = await areaKit.destroy({
             where: {
@@ -892,6 +905,8 @@ const deleteKit = async(req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
     }
 }
+
+
 module.exports = { 
     searchKitsQuery, // SearchKits With Query
     addKit, // Agregamos KIT.

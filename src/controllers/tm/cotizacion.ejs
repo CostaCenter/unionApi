@@ -219,7 +219,18 @@
           <td class="middle" style="text-align: right;"><%= new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(data.totales.total) %></td>
         </tr>
       </tbody>
-    </table>
+    </table><br><br><br><br>
+
+    <div class="notas">
+      <% if(data.notas.length) { %>
+        <strong style="font-size: 12px;">Notas</strong>
+      <% } %>
+      <br><br>
+      <% data.notas.forEach(nota => { %>
+        
+        <span style="color: #666; font-size: 12px;"><%= nota.texto %></span>
+      <% }) %>
+    </div>
   </div>
 </body>
-</html>
+</html> 
