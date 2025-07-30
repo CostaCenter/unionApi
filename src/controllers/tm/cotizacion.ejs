@@ -191,7 +191,7 @@
               <td class="large"></td>
               <td class="corta"></td>
               <td class="corta"></td>
-              <td class="middle Right"><%= area.totalArea %></td>
+              <td class="middle Right"><%= new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(area.totalArea) %></td>
             </tr> 
           </tbody>
         </table>
