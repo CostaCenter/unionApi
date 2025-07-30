@@ -40,6 +40,9 @@ module.exports = sequelize => {
         },
         days: {
             type: DataTypes.INTEGER
+        },
+        validez: {
+            type: DataTypes.INTEGER
         }
     })  
 }

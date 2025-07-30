@@ -8,7 +8,7 @@ const sequelize = producto.sequelize; // <-- Aquí obtienes la instancia
 
 const buscarPorQueryProducto = async (req, res) => {
     try { 
-      const { q } = req.query; // ejemplo: /buscar?q=mesa
+      const { q, lineaId } = req.query; // ejemplo: /buscar?q=mesa
   
       const whereClause = {
         };
@@ -19,6 +19,12 @@ const buscarPorQueryProducto = async (req, res) => {
         } else {
                   // SI ES TEXTO, busca solo por nombre.
             whereClause.item = { [Op.iLike]: `%${q}%` };
+        }
+
+        // Si llega un 'lineaId', se añade al filtro
+        if (lineaId) {
+            whereClause.lineaId = lineaId;
+
         }
 
       const resultados = await producto.findAll({
@@ -202,6 +208,7 @@ const getItemProducto = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
     }
 }
+
 // Consultar toda el producto terminado
 const getAllProducto = async(req, res) => {
     try{

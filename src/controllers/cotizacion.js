@@ -454,7 +454,7 @@ const updateCotizacion = async (req, res) => {
 const giveCondiciones = async (req, res) => {
     try{
         // Recibimos datos por body.
-        const { cotizacionId, userId, days, condicionId } = req.body;
+        const { cotizacionId, userId, days, validez, condicionId } = req.body;
         
         // Validamos 
         if(!cotizacionId || !condicionId || !days) return res.status(501).json({msg: 'Los parámetros no son validos.'});
@@ -463,6 +463,7 @@ const giveCondiciones = async (req, res) => {
         const add = await cotizacion.update({
             days,
             condicionesPagoId: condicionId,
+            validez
         }, {
             where: { 
                 id: cotizacionId
