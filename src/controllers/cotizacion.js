@@ -58,9 +58,9 @@ const generarPdf = async(req, res) => {
 const generatePDF = async (req, res) => {
   try {
     const htmlPath = path.join(__dirname, './tm/cotizacion.ejs');
-const rawCss = fs.readFileSync(path.join(__dirname, './tm/cotizacion.css'), 'utf8');
-const css = `<style>${rawCss}</style>`;
-    const { data } = req.body
+    const rawCss = fs.readFileSync(path.join(__dirname, './tm/cotizacion.css'), 'utf8');
+    const css = `<style>${rawCss}</style>`;
+    const { data } = req.body;
     // Inyecta el CSS embebido dentro del <head> del HTML
     const html = await ejs.renderFile(htmlPath, {data, css}, { async: true });    // 2. Lanzar navegador
     const browser = await puppeteer.launch({

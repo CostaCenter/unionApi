@@ -97,17 +97,16 @@ body {
     .table th {
       border-bottom: 0.1px solid #f8f0f0;
       padding: 8px 0px;
-      text-align: left;
       font-size: 10px;
       padding-right: 5px;
     }
     .table td{
         padding:5px 0px;
-        text-align:left;
         font-size: 10px;
     }
     .mini{
         width:15%;
+        text-align: left;
     }
     .corta{
         width:20%;
@@ -116,10 +115,14 @@ body {
         font-size: 10px;
     }
     .large{
-        width:30%
+        width:30%;
+        padding-right:10px;
     }
+
     .middle{
         width:15%;
+        text-align: right;
+
     }
     .area-total {
       text-align: right;
@@ -131,4 +134,8 @@ body {
       font-weight: bold;
       text-align: right;
       margin-top: 20px;
+    }
+      .Right{
+      width:20%;
+      text-align: right;
     }
