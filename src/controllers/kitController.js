@@ -209,10 +209,7 @@ const getKitPorFecha = async (req, res) => {
 
         
         // 5. Convierte las fechas a objetos Date para MUI X Charts
-        const datosParaGrafica = resultados.map(item => ({
-            ...item,
-            fecha: new Date(item.fecha)
-        }));
+        const datosParaGrafica = resultados
 
         res.status(200).json(datosParaGrafica);
 
@@ -620,7 +617,7 @@ const deleteSegmento = async (req, res) => {
             }
         })
 
-        
+
         // Caso contrario, avanzamos...
         const deletee = await areaKit.destroy({
             where: {
