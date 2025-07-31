@@ -521,7 +521,7 @@ const deleteCotizacion = async (req, res) =>  {
 } 
 
 // Add One versión to ToCotización
-const newVersionAboutCotizacion = async (req, res) => {
+const newVersionAboutCotizacion2 = async (req, res) => {
     const transaction = await db.transaction();
     try{
         // Recibimos datos por body
@@ -716,6 +716,168 @@ const newVersionAboutCotizacion = async (req, res) => {
     }
 }
 
+
+
+// Add One versión to ToCotización
+const newVersionAboutCotizacion = async (req, res) => {
+    const transaction = await db.transaction();
+    try{
+        // Recibimos datos por body
+        const { cotizacionId, userId } = req.body;
+        // Validamos
+        if(!cotizacionId || !userId) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos.
+        
+        
+        
+        // Consultamos Cotizacion
+        const coti = await cotizacion.findByPk(cotizacionId, {
+            include: [{
+                model: areaCotizacion,
+                include: [
+                    // La inclusión de 'kit' a través de 'kitCotizacion' ya era correcta.
+                    {
+                        model: kit,
+                        through: {
+                            attributes: ['id', 'cantidad', 'precio', 'descuento', 'areaCotizacionId']
+                        }
+                    },
+                    {
+                        model: armado,
+                    },
+                    // ANTES: model: producto
+                    // AHORA: Incluimos 'productoCotizacion' y dentro de él, 'producto'.
+                    {
+                        model: productoCotizacion,
+                        include: [{ model: producto }]
+                    }
+                ]
+            }],
+            transaction // Pasamos la transacción como parte del objeto de opciones.
+        });
+
+        // ¡AGREGA ESTO PARA DEPURAR!
+        console.log('--- Objeto Cotización Obtenido ---');
+        console.log(JSON.stringify(coti, null, 2));
+
+
+        if(!coti){
+            await transaction.rollback();
+            return res.status(404).json({msg: 'No hemos encontrado esto'});
+        } 
+
+        let versionCotizacionId;
+        let nuevaVersionNumero;
+
+        // Caso 1: Es la primera vez que se crea una versión para esta cotización.
+        if (!coti.versionCotizacionId) {
+            // Creamos el contenedor de versiones
+            const newVersionGroup = await versionCotizacion.create({
+                name: `${coti.name} - versiones`,
+                description: `Lista de versiones de la cotización`,
+                state: 'active'
+            }, { transaction });
+
+            // Actualizamos la cotización original para asignarle el grupo de versión y marcarla como v1
+            await cotizacion.update({
+                versionCotizacionId: newVersionGroup.id,
+                version: 1,
+            }, {
+                where: { id: coti.id },
+                transaction
+            });
+
+            versionCotizacionId = newVersionGroup.id;
+            nuevaVersionNumero = 2; // La nueva cotización será la v2
+        }
+        // Caso 2: El grupo de versiones ya existe.
+        else {
+            const versionGroup = await versionCotizacion.findByPk(coti.versionCotizacionId, {
+                include: [{ model: cotizacion }],
+                transaction
+            });
+            versionCotizacionId = versionGroup.id;
+            nuevaVersionNumero = versionGroup.cotizacions.length + 1;
+        }
+
+        // Creamos la nueva cotización (la nueva versión)
+        const newCoti = await cotizacion.create({
+            name: `${coti.name} - version ${nuevaVersionNumero}`,
+            description: coti.description,
+            time: coti.time,
+            state: 'version',
+            clientId: coti.clientId,
+            userId: coti.userId, // Podrías usar el userId del request si quien versiona no es el mismo creador.
+            versionCotizacionId: versionCotizacionId,
+            version: nuevaVersionNumero
+        }, { transaction });
+
+        // Si la cotización original tiene áreas, las clonamos.
+        if (coti.areaCotizacions?.length) {
+            for (const area of coti.areaCotizacions) {
+                // Creamos la nueva área asociada a la nueva cotización.
+                const newArea = await areaCotizacion.create({
+                    name: area.name,
+                    description: area.description,
+                    state: area.state,
+                    cotizacionId: newCoti.id
+                }, { transaction });
+
+                // Clonamos los Kits asociados al área (esto ya estaba bien)
+                if (area.kits?.length > 0) {
+                    const kitsArray = area.kits.map((kt) => ({
+                        cantidad: String(kt.kitCotizacion.cantidad),
+                        precio: String(kt.kitCotizacion.precio),
+                        descuento: kt.kitCotizacion.descuento ? String(kt.kitCotizacion.descuento) : null,
+                        areaId: newArea.id,
+                        areaCotizacionId: newArea.id, // ID de la nueva área
+                        kitId: kt.id
+                    }));
+                    await kitCotizacion.bulkCreate(kitsArray, { transaction });
+                }
+
+                // 2. AJUSTE EN EL MAPEO: Iteramos sobre 'productoCotizacions'
+                // ANTES: if (area.productos?.length > 0)
+                if (area.productoCotizacions?.length > 0) {
+                    // ANTES: const productoArray = area.productos.map((pt) => ({ ...
+                    const productoArray = area.productoCotizacions.map((pc) => ({
+                        // Los datos ahora están directamente en 'pc' (la instancia de productoCotizacion)
+                        cantidad: String(pc.cantidad),
+                        precio: String(pc.precio),
+                        medida: pc.medida,
+                        descuento: pc.descuento ? String(pc.descuento) : null,
+                        areaCotizacionId: newArea.id, // ID de la nueva área
+                        productoId: pc.productoId // El Id del producto original
+                    }));
+                    await productoCotizacion.bulkCreate(productoArray, { transaction });
+                }
+            }
+        }
+
+        // Si todo salió bien, confirmamos la transacción.
+        await transaction.commit();
+        return res.status(201).json({ msg: 'Nueva versión creada con éxito.', cotizacion: newCoti });
+
+        
+            
+            // Mapeo todos los productos y agrego los productoCotizacion
+            // Mapeo todos los superKit's y agrego los superKitCotizacion
+
+    }catch(err){
+        console.log(err)
+        if (transaction) {
+            try {
+                 await transaction.rollback();
+                 console.error('Rollback de transacción exitoso.');
+            } catch (rollbackErr) {
+                 console.error('Error haciendo rollback de la transacción:', rollbackErr);
+                 // Opcional: reportar este error de rollback si es crítico
+            }
+        }
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
 // Definir versión como la versión oficial
 const beOfficialVersion = async (req, res) => {
     try{
