@@ -455,7 +455,7 @@ const getKit = async (req, res) => {
                         state: 'active'
                     },
                     required: false
-                },   
+                },  
                 // ▼▼▼ INICIO DEL BLOQUE CORREGIDO ▼▼▼
                 {
                     model: itemKit, // 1. La asociación ahora pasa por aquí
@@ -502,6 +502,9 @@ const getKit = async (req, res) => {
                     attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'state'] }
                 }
             ]
+        }).catch(err => {
+            console.log(err);
+            return null;
         });
 
         if (!searchKit) return res.status(404).json({ msg: 'No hemos encontrado esto.' });
