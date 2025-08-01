@@ -1,5 +1,5 @@
 const express = require('express');
-const { client, service, serviceCotizacion, kit, itemKit, extension, producto, materia, cotizacion, versionCotizacion, notaCotizacion, armado, armadoCotizacion, kitCotizacion, productoCotizacion, areaCotizacion, user,
+const { client, service, requisicion, serviceCotizacion, kit, itemKit, extension, producto, materia, cotizacion, versionCotizacion, notaCotizacion, armado, armadoCotizacion, kitCotizacion, productoCotizacion, areaCotizacion, user,
     condicionesPago, planPago, db} = require('../db/db');
 const { Op } = require('sequelize');
 const { createCotizacion, addItemToCotizacionServices, addSuperKitToCotizacionServices, addProductoToCotizacionServices, addServiceToCotizacionServices } = require('./services/cotizacionServices');
@@ -387,6 +387,43 @@ const getCotizacion = async(req, res) => {
         if(!searchCoti) return res.status(404).json({msg: 'No hemos encontrado esto'});
         // Caso contrario, enviamos respuesta
         res.status(200).json(searchCoti);
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
+// DEVOLVER COTIZACIÓN DESDE COMPRANDO.
+const comeBackFromBuying = async(req, res) => {
+    try{
+        // Recibimos datos por params
+        const { cotiId } = req.params;
+        // Recibidos datos.
+        if(!cotiId) return res.status(400).json({msg: 'Parámetro no valido'});
+        // Caso contrario, avanzamos
+
+        const searchCoti = await cotizacion.findByPk(cotiId);
+        // Validamos la entrada
+        if(!searchCoti) return res.status(404).json({msg: 'No hemos encontrado esta cotización.'});
+        // Avanzamos
+        const searchReq = await requisicion.destroy({
+            where: {
+                cotizacionId: cotiId
+            }
+        });
+
+
+        const updateState = await cotizacion.update({
+            state: 'pendiente'
+        }, {
+            where: {
+                id: cotiId
+            }
+        });
+        if(!updateState) return res.status(502).json({msg: 'NO hemos logrado hacer esto'});
+        // Caso contrario
+        res.status(200).json({msg: 'Actualizado con éxito'})
 
     }catch(err){
         console.log(err);
