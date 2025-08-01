@@ -453,8 +453,9 @@ const getKit = async (req, res) => {
                     model: priceKit,
                     where: {
                         state: 'active'
-                    }
-                },  
+                    },
+                    required: false
+                },   
                 // ▼▼▼ INICIO DEL BLOQUE CORREGIDO ▼▼▼
                 {
                     model: itemKit, // 1. La asociación ahora pasa por aquí
