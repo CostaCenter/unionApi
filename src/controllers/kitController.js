@@ -1,7 +1,7 @@
 const express = require('express');
-const { materia, producto, user, proveedor, extension, price, kit, areaKit, itemKit, linea, categoria, percentage, Op, db, literal } = require('../db/db');
+const { materia, producto, user, proveedor, extension, price, kit, areaKit, itemKit, priceKit, linea, categoria, percentage, Op, db, literal } = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
-const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
+const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState, givePercentage, getPromedio, givePriceToKitServices } = require('./services/kitServices');
 const { addLog } = require('./services/logServices');
 const dayjs = require('dayjs');
 const sequelize = kit.sequelize; // <-- Aquí obtienes la instancia
@@ -45,29 +45,36 @@ const searchKitsForCoti = async (req, res) => {
         const kits = await kit.findAll({
             where: whereClause, 
             include:[
-                // ▼▼▼ INICIO DEL BLOQUE MODIFICADO ▼▼▼
                 {
-                    model: itemKit, // 1. La asociación ahora pasa por el modelo intermedio
-                    attributes: { 
-                        // Opcional: Excluye datos de la tabla intermedia para una respuesta más limpia
-                        exclude: ['createdAt', 'updatedAt', 'kitId', 'materiaId', 'areaId'] 
-                    },
-                    include: [
-                        {
-                            model: materia, // 2. Incluimos Materia DENTRO de ItemKit
-                            include:[{
-                                model: price,
-                                where: {
-                                    state: 'active'
-                                },
-                                required: false // Se recomienda para no excluir kits si una materia no tiene precio activo
-                            }]
-                        },
-                        {
-                            model: areaKit // 3. Incluimos también el Área
-                        }
-                    ]
-                },{
+                    model: priceKit,
+                    where: {
+                        state: 'active'
+                    }
+                },
+                // ▼▼▼ INICIO DEL BLOQUE MODIFICADO ▼▼▼
+                // {
+                //     model: itemKit, // 1. La asociación ahora pasa por el modelo intermedio
+                //     attributes: { 
+                //         // Opcional: Excluye datos de la tabla intermedia para una respuesta más limpia
+                //         exclude: ['createdAt', 'updatedAt', 'kitId', 'materiaId', 'areaId'] 
+                //     },
+                //     include: [
+                //         {
+                //             model: materia, // 2. Incluimos Materia DENTRO de ItemKit
+                //             include:[{
+                //                 model: price,
+                //                 where: {
+                //                     state: 'active'
+                //                 },
+                //                 required: false // Se recomienda para no excluir kits si una materia no tiene precio activo
+                //             }]
+                //         },
+                //         {
+                //             model: areaKit // 3. Incluimos también el Área
+                //         }
+                //     ]
+                // },
+                {
                 model: categoria
             },
             {
@@ -277,7 +284,7 @@ const getKitsFiltrados = async (req, res) => {
     }
 };
 
-
+// KABO
 const getAllKitCompleted = async(req, res) => {
     try{
         // La búsqueda principal no cambia
@@ -442,6 +449,12 @@ const getKit = async (req, res) => {
                 id: kitId
             },
             include: [
+                {
+                    model: priceKit,
+                    where: {
+                        state: 'active'
+                    }
+                },  
                 // ▼▼▼ INICIO DEL BLOQUE CORREGIDO ▼▼▼
                 {
                     model: itemKit, // 1. La asociación ahora pasa por aquí
@@ -903,6 +916,45 @@ const deleteKit = async(req, res) => {
     }
 }
 
+// ITERAR SOFTWARE
+const givePriceToKit = async (req, res) => { 
+    try{
+        // Primero obtenemos todos los kit.
+        const searchAllKits = await kit.findAll();
+        // Validamos
+        if(!searchAllKits) return res.status(404).json({msg: 'No hay click'});
+        // Los iteramos
+        searchAllKits.forEach(async (k) => {
+            //Obtenemos el kit
+            const miniKit = await givePercentage(k.id);
+            // Obtenemos la materia prima y obtenemos precios mapeando
+            const costo = miniKit.itemKits.map((it) => getPromedio(it))
+            // Reduzco y obtengo la suma promedio
+            const getPrice = costo.reduce((acc, costo) => acc + costo, 0);
+            // Lo convertimos en numero sin decimales.
+            const valor = Number(getPrice).toFixed(0)
+
+            // Envio valor y kit, para asignar precio
+            const sendingAddPrice = await givePriceToKitServices(miniKit.id, valor)
+            console.log(`${miniKit.name} - ${valor} COP`)
+        })
+
+        res.status(200).json({msg: 'finish'})
+        // Buscamos la materia prima y medidas
+
+        // Obtenemos el precio promedio
+
+        // Si no existe el precio
+            // LO CREAMOS
+
+        // Caso contrario. 
+            // BUSCAMOS EL PRECIO ACTIVO. 
+            // LO DESACTIVAMOS Y CREAMOS EL NUEVO.
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msG: 'Ha ocurrido un error en la principal.'});
+    }
+}
 
 module.exports = { 
     searchKitsQuery, // SearchKits With Query
@@ -925,4 +977,7 @@ module.exports = {
     updateItemOnKit, // Update ItemKits
     searchKitsForCoti, // Buscamos kits para cotizar
     deleteSegmento, // Eliminar segmento
+
+
+    givePriceToKit, // Obtener precio
 }

@@ -1,5 +1,5 @@
 const express = require('express');
-const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit, searchKitsForCoti, addSegmento, updateSegmento, getProduccion, getKitPorFecha, getKitsFiltrados, deleteSegmento } = require('../controllers/kitController');
+const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit, searchKitsForCoti, addSegmento, updateSegmento, getProduccion, getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit } = require('../controllers/kitController');
 
 const router = express.Router();
 
@@ -33,6 +33,9 @@ router.route('/get/filter/search')
 router.route('/new')
     .post(addKit)
     .put(updateKitt)
+
+router.route('/kits/getPrices')
+    .get(givePriceToKit)
 
 router.route('/add/segmento')
     .post(addSegmento)

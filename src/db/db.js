@@ -17,6 +17,7 @@ const modelProductPrice = require('./model/productPrice'); // Tabla precios de p
 const modelKit = require('./model/kit'); // Tabla de kits
 const modelAreaKit = require('./model/areaKit');
 const modelItemKit = require('./model/itemKit'); // Item.
+const modelPriceKit = require('./model/precioKit'); // Precio del kit.
 
 const modelClient = require('./model/client'); // Cliente
 const modelCotizacion = require('./model/cotizacion'); // Cotización
@@ -94,6 +95,7 @@ modelKit(sequelize);
 // Relacion itemKit
 modelAreaKit(sequelize);
 modelItemKit(sequelize);
+modelPriceKit(sequelize);
 
 // CLIENTE Y COTIZACIÓN
 modelClient(sequelize);
@@ -127,7 +129,7 @@ modelPermisos(sequelize);
 modelUserPermission(sequelize);
 
 
-const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, areaKit, itemKit,
+const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, areaKit, itemKit, priceKit,
   client, versionCotizacion, cotizacion, condicionesPago, planPago, pagoRecibido, notaCotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
   permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion
 } = sequelize.models; 
@@ -260,6 +262,12 @@ areaKit.belongsTo(kit, {
     foreignKey: 'kitId' 
 }); 
 
+
+// PRECIOS
+kit.hasMany(priceKit, {
+  onDelete: 'CASCADE',
+}) 
+priceKit.belongsTo(kit)
 
 
 // --- Materia <--> ItemKit ---
