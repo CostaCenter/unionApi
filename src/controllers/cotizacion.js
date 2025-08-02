@@ -415,7 +415,7 @@ const comeBackFromBuying = async(req, res) => {
 
 
         const updateState = await cotizacion.update({
-            state: 'pendiente'
+            state: 'desarrollo'
         }, {
             where: {
                 id: cotiId
@@ -1848,4 +1848,5 @@ module.exports = {
 
 
     generatePDF, // GENERAR PDF
+    comeBackFromBuying, // DEVOLVER COTIZACION DE BUILDING
 }  

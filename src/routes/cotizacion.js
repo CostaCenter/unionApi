@@ -1,5 +1,5 @@
 const express = require('express');
-const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion, updateCotizacion, addService, deleteServiceOnCotizacion, giveDescuentoService, getAllCondiciones, newCondiction, addPlanToCondicion, giveCondiciones, getAllCotizacionPorAprobar, acceptCotizacionToRequisicion, generarPdf, comeBackCotizacionToComercial, FinishCotizacion, getAllCotizacionForProduccion, ListoCotizacionState, generatePDF } = require('../controllers/cotizacion');
+const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion, updateCotizacion, addService, deleteServiceOnCotizacion, giveDescuentoService, getAllCondiciones, newCondiction, addPlanToCondicion, giveCondiciones, getAllCotizacionPorAprobar, acceptCotizacionToRequisicion, generarPdf, comeBackCotizacionToComercial, FinishCotizacion, getAllCotizacionForProduccion, ListoCotizacionState, generatePDF, comeBackFromBuying } = require('../controllers/cotizacion');
 const multer = require('multer');
 
  
@@ -31,6 +31,9 @@ router.route('/admin/listo/cotizacion/:cotiId')
 router.route('/generatePdf')
     .post(generatePDF)
 
+// DEVOLVER COTIZACION A DESARROLLO
+router.route('/admin/put/comeback/desarrollo/:cotiId')
+    .put(comeBackFromBuying)
     
 router.route('/search')
     .get(searchClientQuery)
