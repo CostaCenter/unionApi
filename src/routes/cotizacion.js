@@ -1,5 +1,5 @@
 const express = require('express');
-const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion, updateCotizacion, addService, deleteServiceOnCotizacion, giveDescuentoService, getAllCondiciones, newCondiction, addPlanToCondicion, giveCondiciones, getAllCotizacionPorAprobar, acceptCotizacionToRequisicion, generarPdf, comeBackCotizacionToComercial, FinishCotizacion, getAllCotizacionForProduccion, ListoCotizacionState, generatePDF, comeBackFromBuying } = require('../controllers/cotizacion');
+const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion, updateCotizacion, addService, deleteServiceOnCotizacion, giveDescuentoService, getAllCondiciones, newCondiction, addPlanToCondicion, giveCondiciones, getAllCotizacionPorAprobar, acceptCotizacionToRequisicion, generarPdf, comeBackCotizacionToComercial, FinishCotizacion, getAllCotizacionForProduccion, ListoCotizacionState, generatePDF, comeBackFromBuying, giveNewValor, givePricioProducto } = require('../controllers/cotizacion');
 const multer = require('multer');
 
  
@@ -26,7 +26,12 @@ router.route('/admin/gotoproduction/:cotiId')
 router.route('/admin/listo/cotizacion/:cotiId')
     .put(ListoCotizacionState)
 
+router.route('/admin/update/cotizacion/kit')
+    .put(giveNewValor);
 
+router.route('/admin/update/cotizacion/producto')
+    .put(givePricioProducto) 
+ 
     
 router.route('/generatePdf')
     .post(generatePDF)

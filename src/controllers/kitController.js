@@ -1,5 +1,7 @@
 const express = require('express');
-const { materia, producto, user, proveedor, extension, price, kit, areaKit, itemKit, priceKit, linea, categoria, percentage, Op, db, literal } = require('../db/db');
+const { materia, producto, user, proveedor, extension, 
+    price, kit, requiredKit, adjuntRequired, areaKit, itemKit, priceKit, linea, 
+    categoria, percentage, Op, db, literal } = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState, givePercentage, getPromedio, givePriceToKitServices } = require('./services/kitServices');
 const { addLog } = require('./services/logServices');
@@ -960,6 +962,102 @@ const givePriceToKit = async (req, res) => {
     }
 }
 
+// Enviar requerimiento de nuevo kit
+const needNewKit = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { nombre, description, userId } = req.body;
+        // Validamos
+        if(!nombre || !description) return res.status(400).json({msg: 'Parámetros no son validos'});
+        // Caso contrario, avanzamos
+
+        const solitud = await requiredKit.create({
+            nombre, 
+            description,
+            userId,
+            state: 'petition'
+        })
+
+        if(!solitud) return res.status(502).json({msg: 'No hemos logrado crear esto'});
+        // Caso contrario, avanzamos
+        res.status(201).json(solitud)
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
+    }
+}
+
+// Damos kit a un requerimiento
+const giveKitToRequerimiento = async(req, res) => {
+    try{
+        // Recibimos datos por body
+        const { reqId, kitId } = req.body;
+        // Caso contrario, avanzamos
+        const sendUpdate = await requiredKit.update({
+            state:'creando',
+            kitId
+        }, {
+            where: {
+                requiredKitId: reqId
+            }
+        });
+        // Validamos respuesta
+        if(!sendUpdate) return res.status(502).json({msg: 'No hemos logrado actualizar esto'});
+        // Caso contrario, avanzamos
+        res.status(200).json({msg: 'Actualizado.'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'})
+    }
+}
+
+// Agregamos mensaje o adjunto al requerimiento
+const addMessageToRequerimiento = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { message, type, adjunt, userId, reqId } = req.body;
+        // Validamos
+        if(!type || !userId || !reqId) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        // Caso contrario, avanzamos...
+        const addMessage = await adjuntRequired.create({
+            mesagge: message,
+            type,
+            adjunt,
+            requiredKitId: reqId,
+            userId
+        });
+
+        if(!addMessage) return res.status(502).json({msg: 'No hemos lografo crear esto.'});
+        // Caso contrario, avanzamos
+        res.status(201).json(addMessage)
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'})
+    }
+}
+
+// Cancelar requerimiento
+const cancelRequired = async (req, res) => {
+    try{
+        // Recibimos datos por params
+        const { reqId } = req.params;
+        // Validamos
+        if(!reqId) return res.status(400).json({msg: 'Parámetro no es valido'});
+        // Caso contrario, avanzamos
+        const removeThat = await requiredKit.destroy({
+            where: {
+                id: reqId
+            }
+        });
+
+        res.status(200).json({msg: 'Removido con exito'})
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Requerimiento no es valido'});
+    }
+}
+
+
 module.exports = { 
     searchKitsQuery, // SearchKits With Query
     addKit, // Agregamos KIT.
@@ -984,4 +1082,10 @@ module.exports = {
 
 
     givePriceToKit, // Obtener precio
+
+    // Solciitar kit
+    needNewKit, // Necesitan un nuevo kit
+    addMessageToRequerimiento, // Agregar mensaje al requerimiento
+    cancelRequired, // Cancelar requerimiento
+    giveKitToRequerimiento, // Dar kit a un requerimiento - para creando
 }

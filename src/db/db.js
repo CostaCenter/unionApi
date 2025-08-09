@@ -15,6 +15,9 @@ const modelExtension = require('./model/extension'); // Extensiones para product
 const modelPrice = require('./model/price'); // Tabla de Precios Materia Prima
 const modelProductPrice = require('./model/productPrice'); // Tabla precios de producto terminado
 const modelKit = require('./model/kit'); // Tabla de kits
+const modelRequiredKit = require('./model/requireKit'); // Requerimos kits
+const modelAdjuntRequired = require('./model/adjuntRequired'); // Adjuntos del required
+
 const modelAreaKit = require('./model/areaKit');
 const modelItemKit = require('./model/itemKit'); // Item.
 const modelPriceKit = require('./model/precioKit'); // Precio del kit.
@@ -91,6 +94,8 @@ modelProductPrice(sequelize);
 
 // Kits
 modelKit(sequelize);
+modelRequiredKit(sequelize);
+modelAdjuntRequired(sequelize);
 
 // Relacion itemKit
 modelAreaKit(sequelize);
@@ -115,6 +120,7 @@ modelArmadoCotizacion(sequelize);
 modelArmadoKit(sequelize);
 modelService(sequelize);
 modelServiceCotizacion(sequelize);
+
 // COMPRAS E INVENTARIO
 // modelInventario(sequelize);
 // modelUbicacion(sequelize);
@@ -129,7 +135,7 @@ modelPermisos(sequelize);
 modelUserPermission(sequelize);
 
 
-const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, areaKit, itemKit, priceKit,
+const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, requiredKit, adjuntRequired, areaKit, itemKit, priceKit,
   client, versionCotizacion, cotizacion, condicionesPago, planPago, pagoRecibido, notaCotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
   permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion
 } = sequelize.models; 
@@ -240,6 +246,22 @@ extension.hasMany(kit, {
 });  
 
 kit.belongsTo(extension);  
+
+// KITS Y REQUERIMIENTOS
+// Relación uno a muchos
+kit.hasMany(requiredKit, {
+  onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
+});  
+requiredKit.belongsTo(kit); 
+
+user.hasMany(requiredKit);
+requiredKit.belongsTo(user);
+
+requiredKit.hasMany(adjuntRequired);
+adjuntRequired.belongsTo(requiredKit); 
+
+user.hasMany(adjuntRequired);
+adjuntRequired.belongsTo(user);
 
 // KITS. MATERIA PRIMA Y KITS.
 // Relación muchos a muchos 

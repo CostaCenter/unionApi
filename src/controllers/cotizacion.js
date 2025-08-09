@@ -1012,6 +1012,39 @@ const giveDescuento = async(req, res) => {
     }
 }
 
+
+// Dar descuento a item en cotización
+const giveNewValor = async(req, res) => {
+    try{
+        // Recibimos datos por body
+        const { kitCotizacionId, precio } = req.body;
+        // Validamos que los datos entres
+        if(!kitCotizacionId || !precio) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos
+        // Consultamos que exista este itemCotizacion
+        const getKitCotizacion = await kitCotizacion.findByPk(kitCotizacionId);
+        // Validamos la respuesta
+        if(!getKitCotizacion) return res.status(404).json({msg: 'No hemos encontrado este item en la cotización'});
+        // Caso contrario, avannzamos
+        // Creamos petición para actualizar
+        const updateKitCotizacion = await kitCotizacion.update({
+            precio
+        }, {
+            where: {
+                id: kitCotizacionId
+            }
+        });
+        // Validamos la respuesta
+        if(!updateKitCotizacion) return res.status(502).json({msg: 'No hemos logrado actualizar esto.'});
+        // Caso contrario, enviamos respuesta 200. ¡Actualizado!
+        res.status(200).json({msg: 'Descuento añadido.'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+ 
 // Dar descuento a item en cotización
 const giveDescuentoProducto = async(req, res) => {
     try{
@@ -1031,6 +1064,36 @@ const giveDescuentoProducto = async(req, res) => {
         }, {
             where: {
                 id: productoCotizacionId
+            }
+        });
+        // Validamos la respuesta
+        if(!updateProductoCotizacion) return res.status(502).json({msg: 'No hemos logrado actualizar esto.'});
+        // Caso contrario, enviamos respuesta 200. ¡Actualizado!
+        res.status(200).json({msg: 'Descuento añadido.'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+// Actualizar precio
+const givePricioProducto = async(req, res) => {
+    try{
+        // Recibimos datos por body
+        const { kitCotizacionId, precio } = req.body;
+        // Validamos que los datos entres
+        if(!kitCotizacionId || !precio) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos
+        // Consultamos que exista este itemCotizacion
+        const getProductoCotizacion = await productoCotizacion.findByPk(kitCotizacionId);
+        // Validamos la respuesta
+        if(!getProductoCotizacion) return res.status(404).json({msg: 'No hemos encontrado este item en la cotización'});
+        // Caso contrario, avannzamos
+        // Creamos petición para actualizar
+        const updateProductoCotizacion = await productoCotizacion.update({
+            precio 
+        }, {
+            where: {
+                id: kitCotizacionId
             }
         });
         // Validamos la respuesta
@@ -1849,4 +1912,7 @@ module.exports = {
 
     generatePDF, // GENERAR PDF
     comeBackFromBuying, // DEVOLVER COTIZACION DE BUILDING
+
+    giveNewValor, // Dar nuevo valor al precio
+    givePricioProducto, // Dar nuevo valor al precio
 }  
