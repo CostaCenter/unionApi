@@ -1,12 +1,18 @@
 const express = require('express');
 const { materia, producto, user, proveedor, extension, 
-    price, kit, requiredKit, adjuntRequired, areaKit, itemKit, priceKit, linea, 
+    price, kit, requiredKit, adjuntRequired, adjunt, areaKit, itemKit, priceKit, linea, 
     categoria, percentage, Op, db, literal } = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState, givePercentage, getPromedio, givePriceToKitServices } = require('./services/kitServices');
 const { addLog } = require('./services/logServices');
 const dayjs = require('dayjs');
 const sequelize = kit.sequelize; // <-- Aquí obtienes la instancia
+const multer = require('multer');
+
+
+const cloudinary = require('cloudinary').v2;
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
 
 
 // Buscamos kits para cotizar por Query
@@ -884,6 +890,25 @@ const changeStateToKit = async(req, res) => {
         if(!sendPeti) return res.status(502).json({msg: 'No hemos logrado actualizar esto'});
         // caso contrario, actualizado con exito.
         const a = await addLog('kits', addKit, 'update', `Cambio el estado del kit a ${state}`, userId)
+        
+        
+        const searchReq = await requiredKit.findOne({
+            where: {
+                kitId: kitId,
+                state: 'creando'
+            }
+        });
+
+        if(searchReq){
+            const updateK = await requiredKit.update({
+                state: 'finish'
+            }, {
+                where: {
+                    id: searchReq.id
+                }
+            })
+            console.log('Actualizado')
+        }
         res.status(200).json({msg: 'Actualizado con éxito'})
     }catch(err){
         console.log(err);
@@ -962,11 +987,71 @@ const givePriceToKit = async (req, res) => {
     }
 }
 
+// Obtenemos todos los requerimientos de kits
+const getAllRequerimientos = async(req, res) => {
+    try{
+        // Consultamos
+        const getAllReq = await requiredKit.findAll({
+            where: {
+                state: {
+                    [Op.in]: ['petition', 'leido', 'creando', 'finish']
+                }
+            },
+            order:[['createdAt', 'DESC']]
+        });
+
+        if(!getAllReq) return res.status(404).json({msg: 'No hay resultados'});
+        // Caso contrario, avanzamos
+        res.status(200).json(getAllReq);
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'})
+    }
+}
+
+
+// Obtenemos un requerimiento
+const getRequerimiento = async(req, res) => {
+    try{
+        // Consultamos
+        // Recibimos params
+        const { reqId } = req.params;
+        const getOne = await requiredKit.findByPk(reqId, {
+            include: [
+                {model: kit},
+                {model: user},
+                {
+                    model: adjuntRequired,
+                    include:[{ 
+                            model: user
+                        }, 
+                        {
+                            model: adjunt
+                        }
+                    ]
+                }
+            ],
+            order: [
+                [{ model: adjuntRequired }, 'createdAt', 'ASC'] // Ordena adjuntRequired por fecha
+            ]
+        }); 
+
+
+        if(!getOne) return res.status(404).json({msg: 'No hay resultados'});
+        // Caso contrario, avanzamos
+        res.status(200).json(getOne);
+ 
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'})
+    }
+}
 // Enviar requerimiento de nuevo kit
 const needNewKit = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { nombre, description, userId } = req.body;
+        const { nombre, description, tipo, userId } = req.body;
         // Validamos
         if(!nombre || !description) return res.status(400).json({msg: 'Parámetros no son validos'});
         // Caso contrario, avanzamos
@@ -975,6 +1060,7 @@ const needNewKit = async (req, res) => {
             nombre, 
             description,
             userId,
+            tipo,
             state: 'petition'
         })
 
@@ -987,6 +1073,30 @@ const needNewKit = async (req, res) => {
     }
 }
 
+// Leemos el requerimiento
+const readRequerimiento = async(req, res) => {
+    try{
+        // Avanzamos, recibimos requerimiento por body
+        const { reqId } = req.body;
+        // Validamos
+        if(!reqId) return res.status(400).json({msg: 'El parámetro no es validos'});
+        // Caso contrario, avanzamos
+
+        const updateThat = await requiredKit.update({
+            leidoProduccion: true
+        }, {
+            where: {
+                id: reqId
+            }
+        });
+
+        res.status(200).json({msg: 'actualizado'});
+
+    }catch(err){
+        console.log(err);
+        res.status(200).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
 // Damos kit a un requerimiento
 const giveKitToRequerimiento = async(req, res) => {
     try{
@@ -998,7 +1108,7 @@ const giveKitToRequerimiento = async(req, res) => {
             kitId
         }, {
             where: {
-                requiredKitId: reqId
+                id: reqId
             }
         });
         // Validamos respuesta
@@ -1015,26 +1125,44 @@ const giveKitToRequerimiento = async(req, res) => {
 const addMessageToRequerimiento = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { message, type, adjunt, userId, reqId } = req.body;
+        const { message, type, userId, reqId } = req.body;
         // Validamos
-        if(!type || !userId || !reqId) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        if(!message || !userId || !reqId) return res.status(400).json({msg: 'Parámetros no son validos.'});
         // Caso contrario, avanzamos...
         const addMessage = await adjuntRequired.create({
             mesagge: message,
             type,
-            adjunt,
             requiredKitId: reqId,
             userId
         });
+        // 2️⃣ Si vienen imágenes, subirlas y guardarlas en tabla aparte
+        const imagenesSubidas = await Promise.all(
+            req.files.map(async (file) => {
+                const result = await cloudinary.uploader.upload(
+                    `data:${file.mimetype};base64,${file.buffer.toString('base64')}`,
+                    { folder: 'requerimientosKits' }
+                );
+                return {
+                    adjuntRequiredId: addMessage.id,
+                    adjunt: result.secure_url,
+                    type: 'imagen'
+                };
+            })
+        );
 
-        if(!addMessage) return res.status(502).json({msg: 'No hemos lografo crear esto.'});
+
+        if(!addMessage) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
         // Caso contrario, avanzamos
+        await adjunt.bulkCreate(imagenesSubidas);
+
         res.status(201).json(addMessage)
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'})
     }
 }
+
+
 
 // Cancelar requerimiento
 const cancelRequired = async (req, res) => {
@@ -1085,7 +1213,10 @@ module.exports = {
 
     // Solciitar kit
     needNewKit, // Necesitan un nuevo kit
+    getAllRequerimientos, // Get All
+    getRequerimiento, // Obtenemos un requerimiento
     addMessageToRequerimiento, // Agregar mensaje al requerimiento
     cancelRequired, // Cancelar requerimiento
     giveKitToRequerimiento, // Dar kit a un requerimiento - para creando
+    readRequerimiento, // Leer desde producción
 }

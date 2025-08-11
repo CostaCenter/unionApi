@@ -20,6 +20,10 @@ module.exports = sequelize => {
         state: {
             type: DataTypes.STRING,
             defaultValue: 'petition'
+        },
+        tipo: {
+            type: DataTypes.STRING,
+            defaultValue: 'kit'
         }
     })   
 }

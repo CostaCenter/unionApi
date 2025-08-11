@@ -1,7 +1,13 @@
 const express = require('express');
-const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit, searchKitsForCoti, addSegmento, updateSegmento, getProduccion, getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit, needNewKit, addMessageToRequerimiento, giveKitToRequerimiento } = require('../controllers/kitController');
+const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit, searchKitsForCoti, addSegmento, updateSegmento, getProduccion, getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit, needNewKit, addMessageToRequerimiento, giveKitToRequerimiento, getAllRequerimientos, getRequerimiento, readRequerimiento } = require('../controllers/kitController');
+const multer = require('multer');
 
 const router = express.Router();
+
+const storage = multer.memoryStorage();
+const upload = multer({ storage: storage });
+
+const cloudinary = require('cloudinary').v2;
 
 router.route('/get/cotizar/search/')
     .get(searchKitsForCoti)
@@ -64,9 +70,20 @@ router.route('/updateState')
 // REQUERIMIENTOS DE KITS
 router.route('/requerimientos/post/add')
     .post(needNewKit)
+ 
+router.route('/requerimientos/get/all')
+    .get(getAllRequerimientos)
 
+router.route('/requerimiento/get/one/:reqId')
+    .get(getRequerimiento)
+
+router.route('/requerimiento/put/read')
+    .put(readRequerimiento)
+    
 router.route('/requerimientos/post/add/message')
-    .post(addMessageToRequerimiento)
+    .post(
+        upload.array('images'),
+        addMessageToRequerimiento)
 
 router.route('/requerimiento/put/give/kit')
     .put(giveKitToRequerimiento)

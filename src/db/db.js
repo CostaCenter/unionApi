@@ -17,7 +17,7 @@ const modelProductPrice = require('./model/productPrice'); // Tabla precios de p
 const modelKit = require('./model/kit'); // Tabla de kits
 const modelRequiredKit = require('./model/requireKit'); // Requerimos kits
 const modelAdjuntRequired = require('./model/adjuntRequired'); // Adjuntos del required
-
+const modelAdjunt = require('./model/adjunt');
 const modelAreaKit = require('./model/areaKit');
 const modelItemKit = require('./model/itemKit'); // Item.
 const modelPriceKit = require('./model/precioKit'); // Precio del kit.
@@ -96,6 +96,7 @@ modelProductPrice(sequelize);
 modelKit(sequelize);
 modelRequiredKit(sequelize);
 modelAdjuntRequired(sequelize);
+modelAdjunt(sequelize);
 
 // Relacion itemKit
 modelAreaKit(sequelize);
@@ -135,7 +136,7 @@ modelPermisos(sequelize);
 modelUserPermission(sequelize);
 
 
-const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, requiredKit, adjuntRequired, areaKit, itemKit, priceKit,
+const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, requiredKit, adjuntRequired, adjunt, areaKit, itemKit, priceKit,
   client, versionCotizacion, cotizacion, condicionesPago, planPago, pagoRecibido, notaCotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
   permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion
 } = sequelize.models; 
@@ -163,7 +164,7 @@ permission.belongsToMany(user, {
 linea.hasMany(materia, {
     foreignKey: 'lineaId', // Clave foránea en la tabla contact
     onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
-  });
+  }); 
 
 materia.belongsTo(linea);
 
@@ -182,7 +183,7 @@ linea.hasMany(producto, {
   onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
 });
 producto.belongsTo(linea);
-
+ 
 // Relación uno a muchos
 categoria.hasMany(producto, {
 foreignKey: 'categoriumId',
@@ -260,9 +261,13 @@ requiredKit.belongsTo(user);
 requiredKit.hasMany(adjuntRequired);
 adjuntRequired.belongsTo(requiredKit); 
 
+
 user.hasMany(adjuntRequired);
 adjuntRequired.belongsTo(user);
 
+adjuntRequired.hasMany(adjunt);
+adjunt.belongsTo(adjuntRequired);
+ 
 // KITS. MATERIA PRIMA Y KITS.
 // Relación muchos a muchos 
 // --- Kit <--> ItemKit ---
