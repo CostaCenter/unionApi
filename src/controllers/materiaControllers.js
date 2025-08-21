@@ -9,14 +9,18 @@ const buscarPorQuery = async (req, res) => {
     try {
       const { q } = req.query; // ejemplo: /buscar?q=mesa
   
-      const resultados = await materia.findAll({
-        where: {
-            [Op.or]: [
-                { item: { [Op.iLike]: `%${q}%` } },
-                { description: { [Op.iLike]: `%${q}%` } },
-            
-            ]
+        const whereClause = {};
+        // 2. Aplicamos la lógica condicional para la búsqueda.
+        if (!isNaN(q) && q.trim() !== '') {
+            // SI ES UN NÚMERO, busca solo por ID.
+            whereClause.id = q;
+        } else {
+            // SI ES TEXTO, busca solo por nombre.
+            whereClause.item = { [Op.iLike]: `%${q}%` };
+            whereClause.item = { [Op.iLike]: `%${q}%`  };
         }
+      const resultados = await materia.findAll({
+        where: whereClause 
       });
   
       res.json(resultados);

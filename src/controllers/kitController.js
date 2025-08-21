@@ -1011,42 +1011,38 @@ const getAllRequerimientos = async(req, res) => {
 }
 
 
-// Obtenemos un requerimiento
-const getRequerimiento = async(req, res) => {
-    try{
-        // Consultamos
-        // Recibimos params
+const getRequerimiento = async (req, res) => {
+    try {
         const { reqId } = req.params;
         const getOne = await requiredKit.findByPk(reqId, {
             include: [
-                {model: kit},
-                {model: user},
+                { model: kit },
+                { model: user },
                 {
                     model: adjuntRequired,
-                    include:[{ 
-                            model: user
-                        }, 
-                        {
-                            model: adjunt
-                        }
+                    include: [
+                        { model: user },
+                        { model: adjunt }
                     ]
                 }
             ],
             order: [
-                [{ model: adjuntRequired }, 'createdAt', 'ASC'] // Ordena adjuntRequired por fecha
+                [{ model: adjuntRequired }, 'createdAt', 'ASC']
             ]
-        }); 
+        });
 
+        if (!getOne) return res.status(404).json({ msg: 'No hay resultados' });
 
-        if(!getOne) return res.status(404).json({msg: 'No hay resultados'});
-        // Caso contrario, avanzamos
+        const io = req.app.get("io");
+        io.to(`req:${reqId}`).emit("requerimiento:update", getOne);
+
         res.status(200).json(getOne);
- 
-    }catch(err){
+    } catch (err) {
         console.log(err);
-        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'})
+        res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
     }
-}
+};
+
 // Enviar requerimiento de nuevo kit
 const needNewKit = async (req, res) => {
     try{
