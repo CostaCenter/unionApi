@@ -6,6 +6,10 @@ module.exports = sequelize => {
         cantidad: {
             type: DataTypes.STRING 
         },
+        // TipoMaterial // Materia Prima o Producto comercializable. Para filtrar mejor.
+        tipoProducto: {
+            type: DataTypes.STRING
+        },
         tipoMovimiento: { // Entrada POR OC a Producción, Transferencia
             type: DataTypes.STRING
         },

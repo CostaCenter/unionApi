@@ -849,6 +849,107 @@ const clonarKit = async (req, res) => {
 }
 
 
+// Clonar KIT
+const clonarKitCotizacion = async (req, res) => {
+    const transaction = await db.transaction();
+    try {
+        const { kitId, userId } = req.params;
+        if (!kitId) return res.status(400).json({ msg: 'Parámetro inválido' });
+
+        // --- 1. CONSULTA INICIAL ---
+        // Traemos el kit original con sus áreas y sus items de una sola vez.
+        const kitOriginal = await kit.findByPk(kitId, {
+            include: [
+                { model: itemKit },
+                { model: areaKit }
+            ],
+            transaction
+        });
+
+        if (!kitOriginal) {
+            await transaction.rollback();
+            return res.status(404).json({ msg: 'No hemos encontrado este kit' });
+        } 
+
+        // --- 2. CREAR EL KIT CLONADO ---
+        const nuevoKit = await kit.create({
+            name: `${kitOriginal.name} - Simulacion`,
+            description: kitOriginal.description,
+            lineaId: kitOriginal.lineaId,
+            categoriumId: kitOriginal.categoriumId,
+            extensionId: kitOriginal.extensionId,
+            state: 'simulacion'
+        }, { transaction });
+
+        // --- 3. CLONAR LAS ÁREAS Y CREAR UN MAPA DE IDs ---
+        const areaIdMap = new Map();
+
+        if (kitOriginal.areaKits && kitOriginal.areaKits.length > 0) {
+            // Preparamos los datos de las nuevas áreas
+            const nuevasAreasData = kitOriginal.areaKits.map(area => ({
+                name: area.name,
+                kitId: nuevoKit.id, // ¡Asignadas al nuevo kit!
+                state: area.state,
+            }));
+
+            // Creamos las nuevas áreas en la base de datos
+            // `returning: true` es importante para que nos devuelva los objetos creados con sus nuevos IDs
+            const nuevasAreasCreadas = await areaKit.bulkCreate(nuevasAreasData, { transaction, returning: true });
+
+            // Creamos un mapa para saber la correspondencia: { 'ID_viejo': ID_nuevo, ... }
+            kitOriginal.areaKits.forEach((areaVieja, index) => {
+                areaIdMap.set(areaVieja.id, nuevasAreasCreadas[index].id);
+            });
+        }
+
+        // --- 4. INSERCIÓN Y COMMIT ---
+        if (kitOriginal.itemKits && kitOriginal.itemKits.length > 0) {
+            const nuevosItems = kitOriginal.itemKits.map(item => (
+                
+            console.log(item),
+                {
+                
+                cantidad: item.cantidad,
+                medida: item.medida,
+                calibre: item.calibre,
+                materiaId: item.materiaId,
+                areaId: item.areaId ? areaIdMap.get(item.areaId) : null,
+                kitId: nuevoKit.id
+            }));
+            await itemKit.bulkCreate(nuevosItems, { transaction });
+        }
+        
+        // Confirmamos que toda la operación en la base de datos fue exitosa
+        await transaction.commit();
+
+        // --- 5. PASO FINAL: BUSCAMOS EL KIT COMPLETO PARA LA RESPUESTA ---
+        const kitClonadoCompleto = await kit.findByPk(nuevoKit.id, {
+            // Incluimos toda la información que el frontend necesita
+            include: [
+                {
+                    model: itemKit,
+                    include: [materia] // AHORA SÍ incluimos la materia prima
+                },
+                {
+                    model: areaKit
+                }
+            ]
+        });
+
+        // Enviamos el objeto completo en la respuesta
+        return res.status(201).json({ 
+            msg: 'Kit, áreas e items clonados con éxito!', 
+            nuevoKit: kitClonadoCompleto // Enviamos la versión completa
+        });
+
+    } catch (err) {
+        if (transaction) await transaction.rollback();
+        console.error('Error en la función clonarKit:', err);
+        res.status(500).json({ msg: 'Ha ocurrido un error en el servidor.' });
+    }
+}
+
+
 // Eliminar elemento del Kit
 const deleteItemOnKit = async(req, res) => {
     try{
@@ -1193,6 +1294,7 @@ module.exports = {
     addItem, // Agregar Item
     updateKitt, // Actualizar kit
     clonarKit, // Clonar Kit
+    clonarKitCotizacion, // Simulación
     deleteKit, // Eliminar Kit
     getKit, // Obtenemos el KIT
     deleteItemOnKit, // Eliminar item del kit

@@ -17,6 +17,7 @@ const requisicionroutes = require('./requisicion'); // Requisiciones
 
 const superKitsRoutes = require('./superkits');
 const permission = require('./permission');
+const inventario = require('./inventario');
 
 router.use('/users', userRoutes);
 router.use('/proveedores', proveedorRoutes);
@@ -33,6 +34,9 @@ router.use('/cotizacion', cotizacionRoutes);
 router.use('/requisicion', requisicionroutes);
 router.use('/superkit', superKitsRoutes);
 router.use('/permission', permission)
+
+router.use('/inventario', inventario)
+
  
 
  

@@ -46,8 +46,10 @@ const modelServiceCotizacion = require('./model/serviciosCotizacion');
 const modelInventario = require('./model/inventario'); // Inventario
 const modelUbicacion = require('./model/ubicacion'); // Ubicación.
 const modelMovimientoInventario = require('./model/movimientosInventario'); // Movimiento en inventario
+const modelCotizacionCompromiso = require('./model/cotizacion_compromiso'); // Compromisos de la cotización
 
 const modelRequisicion = require('./model/requisicion');
+const modelItemRequisicion = require('./model/itemRequisicion');
 const modelLogs = require('./model/logs');
 const modelPorcentajes = require('./model/porcentajes');
 
@@ -55,6 +57,8 @@ const modelPorcentajes = require('./model/porcentajes');
 const modelPermisos = require('./model/permission');
 const modelUserPermission = require('./model/user_permission');
 
+// COMPRAS
+const modelComprarGrupo = require('./model/comprar_grupo');
 
 const entorno = true;     
 let dburl = entorno ? 'postgresql://postgres:mnfPuhNtcXTFhlurmBdslUBftGBFMZau@centerbeam.proxy.rlwy.net:41058/railway' : 'postgres:postgres:123@localhost:5432/u';
@@ -123,11 +127,17 @@ modelService(sequelize);
 modelServiceCotizacion(sequelize);
 
 // COMPRAS E INVENTARIO
-// modelInventario(sequelize);
-// modelUbicacion(sequelize);
-// modelMovimientoInventario(sequelize); 
+modelInventario(sequelize);
+modelUbicacion(sequelize);
+modelMovimientoInventario(sequelize); 
+modelCotizacionCompromiso(sequelize);
+
+
 
 modelRequisicion(sequelize); 
+modelItemRequisicion(sequelize);
+
+
 modelLogs(sequelize);
 modelPorcentajes(sequelize);
 
@@ -136,13 +146,57 @@ modelPermisos(sequelize);
 modelUserPermission(sequelize);
 
 
+
+// COMPRAS
+modelComprarGrupo(sequelize);
+
 const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, requiredKit, adjuntRequired, adjunt, areaKit, itemKit, priceKit,
-  client, versionCotizacion, cotizacion, condicionesPago, planPago, pagoRecibido, notaCotizacion, armado, kitCotizacion, requisicion, armadoCotizacion, armadoKits, log, percentage,
-  permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion
+  client, versionCotizacion, cotizacion, condicionesPago, planPago, pagoRecibido, notaCotizacion, armado, kitCotizacion, requisicion, itemRequisicion, armadoCotizacion, armadoKits, log, percentage,
+  permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion,
+  ubicacion, movimientoInventario, inventario, cotizacion_compromiso, comprar_grupo
 } = sequelize.models; 
 
 
 // RELACIONES 
+
+
+
+// COMPRAR
+// Relación uno a muchos
+
+
+// VAMOS A RELACIONAR ITEM REQUISICION CON REQUISICION Y MATERIA
+
+// comprar_grupo.hasMany(requisicion, {
+//   foreignKey: 'comprar_grupoId', // Clave foránea en la tabla contact
+//   onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
+// });
+// requisicion.belongsTo(comprar_grupo);
+ 
+// // DATA
+// comprar_grupo.hasMany(cotizacion, {
+//   foreignKey: 'comprar_grupoId',
+// });
+// // Cada item de la tabla intermedia pertenece a un solo Kit.
+// cotizacion.belongsTo(kit, {
+//   foreignKey: 'comprar_grupoId'
+// });
+
+
+// comprar_grupo.belongsToMany(cotizacion, {
+//   through: KitMateria,
+//   foreignKey: 'comprarGrupoId',
+//   otherKey: 'cotizacionId',
+//   as: 'cotizaciones'
+// });
+
+// cotizacion.belongsToMany(comprar_grupo, {
+//   through: KitMateria,
+//   foreignKey: 'cotizacionId',
+//   otherKey: 'comprarGrupoId',
+//   as: 'compras'
+// });
+
 
 
 // PERMISOS DE USUARIO
@@ -485,37 +539,100 @@ cotizacion.hasMany(requisicion, {
 
 requisicion.belongsTo(cotizacion);
  
+
+// Relacionamos requisiciones
+requisicion.hasMany(itemRequisicion)
+itemRequisicion.belongsTo(requisicion);
+ 
+producto.hasMany(itemRequisicion)
+itemRequisicion.belongsTo(producto);
+
+materia.hasMany(itemRequisicion)
+itemRequisicion.belongsTo(materia);
+   
+ 
 // ---------------------------
 // INVENTARIO Y COMPRAS 
 // ---------------------------
-// ubicacion.hasMany(inventario, {
-//   foreignKey: 'ubicacionId', // Clave foránea en la tabla inventario
-//   onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
-// })
-// inventario.belongsTo(ubicacion); 
+ubicacion.hasMany(inventario, {
+  foreignKey: 'ubicacionId', // Clave foránea en la tabla inventario
+  onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
+})
+inventario.belongsTo(ubicacion); 
+  
+materia.hasMany(inventario, {
+  foreignKey: 'materiumId',
+  onDelete: 'CASCADE'
+})
+inventario.belongsTo(materia)
 
-// materia.hasMany(inventario, {
-//   foreignKey: 'materiumId',
-//   onDelete: 'CASCADE'
-// })
-// inventario.belongsTo(materia)
 
-// // ENLAZO LOS MOVIMIENTOS
-// materia.hasMany(movimientoInventario, {
-//   foreignKey: 'materiumId',
-//   onDelete: 'CASCADE'
-// });
-// movimientoInventario.belongsTo(materia);
+producto.hasMany(inventario, {
+  foreignKey: 'productoId',
+  onDelete: 'CASCADE'
+})
+inventario.belongsTo(producto)
 
-// ubicacion.hasMany(movimientoInventario, {
-//   foreignKey: 'ubicacionOrigenId',
-//   as: 'origen'
-// })
-// ubicacion.hasMany(movimientoInventario, {
-//   foreignKey: 'ubicacionDestinoId',
-//   as: 'destino'
-// }) 
 
+
+// ENLAZO LOS MOVIMIENTOS
+materia.hasMany(movimientoInventario, {
+  foreignKey: 'materiumId',
+  onDelete: 'CASCADE'
+});
+movimientoInventario.belongsTo(materia);
+
+producto.hasMany(movimientoInventario, {
+  foreignKey: 'productoId',
+  onDelete: 'CASCADE'
+});
+movimientoInventario.belongsTo(producto);
+
+
+cotizacion.hasMany(movimientoInventario, {
+  foreignKey: 'cotizacionId',
+  onDelete: 'CASCADE'
+});
+movimientoInventario.belongsTo(cotizacion);
+ 
+ 
+ubicacion.hasMany(movimientoInventario, {
+  foreignKey: 'ubicacionOrigenId',
+  as: 'origen'
+})
+ubicacion.hasMany(movimientoInventario, {
+  foreignKey: 'ubicacionDestinoId',
+  as: 'destino'
+}) 
+
+// Una cotización puede tener muchos compromisos
+cotizacion.hasMany(cotizacion_compromiso, {
+  foreignKey: 'cotizacionId',
+  onDelete: 'CASCADE'
+});
+cotizacion_compromiso.belongsTo(cotizacion);
+
+// Cada compromiso pertenece a una materia prima
+materia.hasMany(cotizacion_compromiso, {
+  foreignKey: 'materiaId',
+  onDelete: 'CASCADE'
+});
+cotizacion_compromiso.belongsTo(materia);
+
+// Cada compromiso pertenece a una materia prima
+producto.hasMany(cotizacion_compromiso, {
+  foreignKey: 'productoId',
+  onDelete: 'CASCADE'
+});
+cotizacion_compromiso.belongsTo(producto);
+
+// Cada compromiso se asigna a una ubicación (bodega, tránsito, etc.)
+ubicacion.hasMany(cotizacion_compromiso, {
+  foreignKey: 'ubicacionId',
+  onDelete: 'CASCADE'
+});
+
+cotizacion_compromiso.belongsTo(ubicacion);
 
 // Exportamos.
 module.exports = {  

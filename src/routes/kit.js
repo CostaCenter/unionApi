@@ -1,5 +1,5 @@
 const express = require('express');
-const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit, searchKitsForCoti, addSegmento, updateSegmento, getProduccion, getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit, needNewKit, addMessageToRequerimiento, giveKitToRequerimiento, getAllRequerimientos, getRequerimiento, readRequerimiento } = require('../controllers/kitController');
+const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit, searchKitsForCoti, addSegmento, updateSegmento, getProduccion, getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit, needNewKit, addMessageToRequerimiento, giveKitToRequerimiento, getAllRequerimientos, getRequerimiento, readRequerimiento, clonarKitCotizacion } = require('../controllers/kitController');
 const multer = require('multer');
 
 const router = express.Router();
@@ -56,6 +56,10 @@ router.route('/add/item')
 
 router.route('/clone/:kitId/:userId')
     .get(clonarKit)
+
+// SIMULACIÓN
+router.route('/clone/simulation/:kitId/:userId')
+    .get(clonarKitCotizacion)
 
 router.route('/delete/:kitId/:userId')
     .delete(deleteKit)

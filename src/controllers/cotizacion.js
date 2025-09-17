@@ -345,7 +345,7 @@ const getCotizacion = async(req, res) => {
                     // 1. Mantenemos la relación belongsToMany para 'kit' como la tenías
                     { 
                         model: kit, // 1. Incluimos el modelo que tiene el precio y los datos de la cotización.
-                        attributes: ['id', 'name', 'description'], // Trae solo los campos que necesites del kit
+                        attributes: ['id', 'name', 'description', 'state'], // Trae solo los campos que necesites del kit
                         include:[{
                             model: extension
                         }]

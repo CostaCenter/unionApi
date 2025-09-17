@@ -6,7 +6,7 @@ module.exports = sequelize => {
         nombre: {
             type: DataTypes.STRING 
         },
-        // Tipo. Clasifica la ubicación. 'Bogega', 'Producción, 'Tránsito', 'Despacho'
+        // Tipo. Clasifica la ubicación. 'Bodega', 'Producción, 'Tránsito', 'Despacho'
         tipo: {
             type: DataTypes.STRING
         },
