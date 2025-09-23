@@ -295,6 +295,7 @@ const getRequisicion = async (req, res) => {
                         if (!totalMateriaPrima[key]) {
                             totalMateriaPrima[key] = { 
                                 id: item.materium.id, // Usamos 'materium'
+                                cguno: item.materium.item,
                                 nombre: item.materium.description, 
                                 medidaOriginal: item.materium.medida, 
                                 unidad: item.materium.unidad, 
