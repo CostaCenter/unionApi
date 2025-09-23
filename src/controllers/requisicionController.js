@@ -1,8 +1,11 @@
 const express = require('express');
-const { materia, cotizacion, client, user, armado, kitCotizacion, armadoKits, areaCotizacion, armadoCotizacion, proveedor, extension, price, kit, itemKit, linea, categoria, requisicion, itemRequisicion, db, Op} = require('../db/db');
+const { materia, cotizacion, client, user, armado, kitCotizacion, armadoKits, areaCotizacion, armadoCotizacion, proveedor, extension, price, kit, itemKit, linea, categoria, requisicion, itemRequisicion, 
+    comprasCotizacion, ComprasCotizacionProyecto, comprasCotizacionItem, db, Op} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 const { default: axios } = require('axios');
+const { nuevaCompra, addItemToCotizacion, updateItems } = require('./services/requsicionService');
+const dayjs = require('dayjs');
 
 // Obtener todas las requisiciones
 const getAllRequisiciones = async (req, res) => {
@@ -77,8 +80,16 @@ const getRealProyectosRequisicion = async (req, res) => {
             }, {
                 model: itemRequisicion,
                 include:[{
-                    model: materia
+                    model: materia,
+                    include:[{ 
+                        model: price,
+                        where: {
+                            state: 'active'
+                        }
+                    }]
                 }]
+
+
             }]
         });
 
@@ -96,15 +107,15 @@ const getRealProyectosRequisicion = async (req, res) => {
                         nombre: item.materium.description,
                         medida: item.materium.medida,
                         unidad: item.materium.unidad,
+                        precios: item.materium.prices,
                         entregado: 0,
                         totalCantidad: 0
                     };
-                }
+                }  
                 consolidado[matId].totalCantidad += Number(item.cantidad);
-                consolidado[matId].entragado += Number(item.cantidadEntrega);
+                consolidado[matId].entregado += Number(item.cantidadEntrega);
             });
-        });
-
+        });     
         // Lo devolvemos como array
         const resultado = Object.values(consolidado);
         let result = {
@@ -134,6 +145,9 @@ const getMateriaByComprar =  async (req, res) => {
                 include: [ {model: requisicion}]
             }, {
                 model: price,
+                where: {
+                    state: 'active'
+                },
                 include:[{
                     model: proveedor
                 }]
@@ -162,6 +176,9 @@ const getProveedoresComunes = async (req, res) => {
       where: { id: { [Op.in]: materiaIds } },
       include: [{
         model: price,
+        where: {
+            state: 'active'
+        },
         include: [ proveedor ]
       }]
     });
@@ -189,7 +206,8 @@ const getProveedoresComunes = async (req, res) => {
         const precio = m.prices.find(p => p.proveedorId === provId);
         return {
           materiaId: m.id,
-          nombreMateria: m.item,
+          nombreMateria: m.description,
+          materia: m,
           unidad: m.unidad,
           precio: precio ? precio.valor : null
         };
@@ -197,7 +215,7 @@ const getProveedoresComunes = async (req, res) => {
 
       return {
         proveedor: prov,
-        precios: preciosPorMateria
+        materias: preciosPorMateria
       };
     });
 
@@ -486,7 +504,7 @@ const getMultipleReq = async (req, res) => {
                             const key = `${item.materium.id}`;
                             const cantidadTotal = Number(item.medida) * Number(cantidadKitEnCoti);
                             if (!totalMateriaPrima[key]) {
-                                totalMateriaPrima[key] = { id: item.materium.id, nombre: item.materium.description, medidaOriginal: item.materium.medida, unidad: item.materium.unidad, cantidad: 0 };
+                                totalMateriaPrima[key] = { id: item.materium.id, cguno: item.materium.item,nombre: item.materium.description, medidaOriginal: item.materium.medida, unidad: item.materium.unidad, cantidad: 0 };
                             }
                             totalMateriaPrima[key].cantidad += cantidadTotal;
                         });
@@ -552,8 +570,333 @@ const changeStateOfReq = async (req, res) => {
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
     }
+} 
+
+
+// COMPRAS Y SUS COTIZACIONES
+const newCotizacionProvider = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { name, description, fecha, proveedor, proyecto } = req.body;
+        // Validamos
+        if(!name || !description || !fecha || !proveedor || !proyecto) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        // Caso contrario, avanzamos
+        
+        // Buscamos primero, que no exista una cotización con ese nombre y ese proyecto
+        const searchCotizacion = await comprasCotizacion.findOne({
+            where: {
+                name,
+                proveedorId: proveedor
+            },
+            include: [{
+                model: requisicion,
+                as: 'requisiciones',
+                through: {
+                where: { requisicionId: proyecto }
+                },
+                required: true
+            }]
+        });
+
+        if(searchCotizacion) return res.status(200).json({msg: 'Ya existe una cotización con este nombre'});
+
+        // Caso contrario, avanzamos...
+        const addNuevo = await nuevaCompra(req.body);
+
+        if(!addNuevo) return res.status(501).json({msg: 'No hemos logrado crear esto.'});
+        // Caso contrario, avanzamos...
+        res.status(201).json(addNuevo);
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
 }
 
+const changeToCompras = async (req, res) => {
+    try{
+        const { comprasCotizacionId } = req.params;
+
+        if(!comprasCotizacionId) return res.status(400).json({msg: 'Parámetro invalido'});
+        const hoy = dayjs();
+        // Caso contrario, avanzamos...
+        const searchData = await comprasCotizacion.findOne({
+            where: {
+                id: comprasCotizacionId,
+            }
+        });
+
+        if(!searchData) return res.status(404).json({msg: 'No hemos encotrado esto.'});
+        // Caso contrario, actualizamos 
+        const updateData = await comprasCotizacion.update({
+            estadoPago: 'compras',
+            dayCompras: hoy.format('YYY-MM-DD')
+        }, {
+            where: {
+                id: comprasCotizacionId
+            }
+        }).then(async (result) => {
+            const updateItemsCotizacions = await comprasCotizacionItem.update({
+                estado: 'enProceso',
+            }, {
+                where: {
+                    comprasCotizacionId
+                }
+            })
+
+            return result;
+        })
+
+        if(!updateData) return res.status(501).json({msg: 'No hemos logrado actualizar esto'});
+        // Caso contrario, avanzamos
+        res.status(200).json({msg: 'Actualizado...'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
+    }
+}
+
+// Actualizar a comprado
+const changeToComprasToComprado = async (req, res) => {
+    try{
+        const { comprasCotizacionId } = req.params;
+
+        if(!comprasCotizacionId) return res.status(400).json({msg: 'Parámetro invalido'});
+        const hoy = dayjs();
+        // Caso contrario, avanzamos...
+        const searchData = await comprasCotizacion.findOne({
+            where: {
+                id: comprasCotizacionId,
+            },
+            include:[{
+                model: comprasCotizacionItem
+            }]
+        });
+
+        if(!searchData) return res.status(404).json({msg: 'No hemos encotrado esto.'});
+        // Caso contrario, actualizamos 
+        const updateData = await comprasCotizacion.update({
+            estadoPago: 'comprado',
+            dayFinish: hoy.format('YYY-MM-DD')
+        }, {
+            where: {
+                id: comprasCotizacionId
+            }
+        }).then(async (result) => {
+            const updateItemsCotizacions = await comprasCotizacionItem.update({
+                estado: 'aprobado',
+            }, {
+                where: {
+                    comprasCotizacionId
+                }
+            })
+
+            return result;
+        })
+
+        if(!updateData) return res.status(501).json({msg: 'No hemos logrado actualizar esto'});
+        await updateItems(comprasCotizacionId)
+        // Caso contrario, avanzamos
+        res.status(200).json({msg: 'Actualizado...'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
+    }
+}
+
+
+// OBTENEMOS TODAS LAS ORDENES DE COMPRAS
+const getAllOrdenesCompras = async (req, res) => {
+    try{
+        // Realizamos peticion
+        const searchAll = await comprasCotizacion.findAll({
+            where: {
+                estadoPago: 'compras'
+            },
+            include:[{
+                model: requisicion,
+                as: 'requisiciones',
+                through: { attributes: [] }
+            },{
+                model: comprasCotizacionItem,
+                include:[{
+                    model: requisicion
+                }]
+            }]
+        });
+        // Validamos la respuesta
+        if(!searchAll || !searchAll.length) return res.status(404).json({msg: 'No hemos encontrado esto'});
+        // Caso contrario, enviamos respuesta
+        res.status(200).json(searchAll)
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
+    }
+}
+
+const addItemToCotizacionProvider = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { cantidad, precioUnidad, precioTotal, materiaId, productoId, cotizacionId } = req.body;
+        // Validamos
+        if(!cantidad || !precioUnidad || !precioTotal || !cotizacionId) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos
+        
+        // Buscamos primero, que no exista una cotización con ese nombre y ese proyecto
+        const searchItemCotizacion = await comprasCotizacionItem.findOne({
+            where: {
+                materiaId,
+                productoId,
+                comprasCotizacionId: cotizacionId
+            },
+        });
+
+        if(searchItemCotizacion) return res.status(200).json({msg: 'Ya existe una cotización con este nombre'});
+
+        // Caso contrario, avanzamos...
+        const addItemCotizacion = await addItemToCotizacion(req.body);
+
+        if(!addItemCotizacion) return res.status(501).json({msg: 'No hemos logrado crear esto.'});
+        // Caso contrario, avanzamos...
+        res.status(201).json(addItemCotizacion);
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+// Crear función, que me reciba varias cotizaciones con sus respectivos elementos dentros
+const addSomeMuchCotizacionsProvider = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        /* 
+            DESCRIBIMOS LA ESTRUCTURA QUE NOS DEBE LLEGAR 
+            [
+                {
+                    ProveedorId: 1,
+                    nombreCotizacion: 'Acá el nombre de la cotización'
+                    description: 'Una descripción de la cotización',
+                    proyectos: [1,2,3],
+                    items: [
+                        {
+                            materiaPrimaId: 1,
+                            productoId: null,
+                            precioUnidad: '10000',
+                            precioTotal: '50000',
+                            cantidad: 5,
+                            cotizacionId: Proviene del mapeo ,
+                            requisicionId:1 
+                        },
+                        {
+                            materiaPrimaId: 1,
+                            productoId: null,
+                            precioUnidad: '10000',
+                            precioTotal: '40000',
+                            cantidad: 4,
+                            cotizacionId: Proviene del mapeo ,
+                            requisicionId:2 
+                        }
+
+                    ]
+                }
+            ]
+        */
+        const { datos } = req.body;
+        // Validamos que los datos entren
+        if(!datos) return res.status(400).json({msg: 'El parámetro no es valido.'});
+        // Caso contrario, avanzamos
+        let time = dayjs()
+        datos.map(async( data) => {
+            
+            let body = {
+                name: data.name,
+                description: data.description,
+                fecha: time.format("YYYY-MM-DD"),
+                proyectos: data.proyectos,
+                proveedor: data.proveedorId
+            }
+            const send = await nuevaCompra(body)
+            .then(async (res) => {
+                data.items.map(async (item) => {
+                    let body = {
+                        cantidad: item.cantidad,
+                        requisicion: item.requisicion,
+                        precioUnidad: item.precioUnidad,
+                        precioTotal: item.precioTotal,
+                        materiaId: item.materiaId,
+                        productoId: item.productoId,
+                        cotizacionId: res.id
+                    }
+                    const addItem = await addItemToCotizacion(body)
+                })
+            })
+        })
+
+        res.status(201).json({msg: 'Misión cumplida'})
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
+
+// Obtenemos todas las cotizaciones relacionadas con los proyectos
+const getAllCotizacionsCompras = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { proyectos } = req.body;
+        if(!proyectos || !proyectos.length) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos...
+        const searchAllCotizacions = await comprasCotizacion.findAll({
+            include:[{
+                model: requisicion,
+                as: 'requisiciones',
+                where: {
+                    id: { [Op.in]: proyectos }   // <-- filtramos las requisiciones relacionadas
+                },
+                through: { attributes: [] }     // oculta columnas de la tabla pivote
+            },{
+                model: proveedor
+            }] 
+        })  
+
+        if(!searchAllCotizacions) return res.status(404).json({msg: 'No hay resutlados'});
+        // Caso contrario
+        res.status(200).json(searchAllCotizacions)
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+} 
+const getCotizacionCompras = async (req, res) => {
+    try{
+        // Recibo dato por params
+        const{ comprasCotizacionId } = req.params;
+        // Validamos
+        if(!comprasCotizacionId) return res.status(400).json({msg: 'Parámetro no valido.'});
+        // Caso contrario, avanzamos...
+        const searchCoti = await comprasCotizacion.findByPk(comprasCotizacionId, {
+            include:[{
+                model: comprasCotizacionItem,
+                include:[{
+                    model: requisicion,
+                    include:[{
+                        model: itemRequisicion
+                    }]
+                }]
+            }, {
+                model: proveedor
+            }]
+        });
+
+        if(!searchCoti) return res.status(404).json({msg: 'No hay resultados'});
+        // Caso contrario, avanzamos
+        res.status(200).json(searchCoti)
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
 module.exports = { 
     getAllRequisiciones, // Obtener todas las requsiciones
     getRequisicion, // Obtener una requisición 
@@ -566,4 +909,14 @@ module.exports = {
     getRealProyectosRequisicion, // Obtenemos multiples requisiciones
     getMateriaByComprar, // Obtenemos materia prima en requisición
     getProveedoresComunes, // Obtener proveedores comunes
+
+    // COMPRAS
+    newCotizacionProvider, // Nueva contización a un proveedor
+    addItemToCotizacionProvider, // añadir item a una cotización
+    addSomeMuchCotizacionsProvider, // Crear cotizaciones necesarias con sus itemComprasCotizaciones
+    getAllCotizacionsCompras, // Obtenemos cotizaciones por proyectos
+    getCotizacionCompras, // Obtenemos cotizacion puntual
+    changeToCompras, // Cambiamos de estado la cotización
+    changeToComprasToComprado, // Actualizar a comprado
+    getAllOrdenesCompras, // Obtenemos todas las ordenes de compra.
 }
