@@ -14,6 +14,7 @@ const puppeteer = require('puppeteer');
 const ejs = require('ejs');
 const path = require('path');
 const fs = require('fs');
+const { default: axios } = require('axios');
 // const 
 const generarPdf = async(req, res) => { 
     try{
@@ -1412,7 +1413,7 @@ const acceptCotizacionToRequisicion = async (req, res) => {
         console.log(updateCoti);
         if(updateCoti == 501) return res.status(501).json({msg: 'Parametros no son validos.'});
         if(updateCoti == 502) return res.status(502).json({msg: 'No hemos logrado generar requsición'})
-        res.status(201).json({msg: 'Requisición enviada'})
+        res.status(201).json(updateCoti)
 
     }catch(err){
         console.log(err);

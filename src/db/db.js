@@ -48,6 +48,11 @@ const modelUbicacion = require('./model/ubicacion'); // Ubicación.
 const modelMovimientoInventario = require('./model/movimientosInventario'); // Movimiento en inventario
 const modelCotizacionCompromiso = require('./model/cotizacion_compromiso'); // Compromisos de la cotización
 
+const modelComprasCotizacion = require('./model/comprasCotizacion'); // Cotización que proviene de los proveedores
+const modelComprasCotizacionProyecto = require('./model/cotizacionComprasProjecto'); // Relaciono el proyecto con la cotización
+const modelComprasCotizacionItem = require('./model/comprasCotizacionItem'); // Item que relaciona el proyecto y la compra
+
+
 const modelRequisicion = require('./model/requisicion');
 const modelItemRequisicion = require('./model/itemRequisicion');
 const modelLogs = require('./model/logs');
@@ -133,6 +138,10 @@ modelMovimientoInventario(sequelize);
 modelCotizacionCompromiso(sequelize);
 
 
+modelComprasCotizacion(sequelize);
+modelComprasCotizacionProyecto(sequelize);
+modelComprasCotizacionItem(sequelize);
+
 
 modelRequisicion(sequelize); 
 modelItemRequisicion(sequelize);
@@ -153,7 +162,8 @@ modelComprarGrupo(sequelize);
 const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, requiredKit, adjuntRequired, adjunt, areaKit, itemKit, priceKit,
   client, versionCotizacion, cotizacion, condicionesPago, planPago, pagoRecibido, notaCotizacion, armado, kitCotizacion, requisicion, itemRequisicion, armadoCotizacion, armadoKits, log, percentage,
   permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion,
-  ubicacion, movimientoInventario, inventario, cotizacion_compromiso, comprar_grupo
+  ubicacion, movimientoInventario, inventario, cotizacion_compromiso, comprar_grupo, 
+  comprasCotizacion, ComprasCotizacionProyecto, comprasCotizacionItem
 } = sequelize.models; 
 
 
@@ -196,6 +206,62 @@ const { user, proveedor, linea, categoria, materia, producto, extension, price, 
 //   otherKey: 'comprarGrupoId',
 //   as: 'compras'
 // });
+
+
+
+
+// Una cotización puede tener muchos compromisos
+comprasCotizacion.hasMany(comprasCotizacionItem, {
+  foreignKey: 'comprasCotizacionId',
+  onDelete: 'CASCADE'
+});
+comprasCotizacionItem.belongsTo(comprasCotizacion);
+
+ 
+requisicion.hasMany(comprasCotizacionItem, {
+  foreignKey: 'requisicionId',
+  onDelete: 'CASCADE'
+});
+comprasCotizacionItem.belongsTo(requisicion);
+
+materia.hasMany(comprasCotizacionItem, {
+  foreignKey: 'materiaId',
+  onDelete: 'CASCADE'
+});
+comprasCotizacionItem.belongsTo(materia);
+
+producto.hasMany(comprasCotizacionItem, {
+  foreignKey: 'productoId',
+  onDelete: 'CASCADE' 
+}); 
+comprasCotizacionItem.belongsTo(producto);
+
+
+// Relación de cotización y proveedor
+// Relación uno a muchos
+proveedor.hasMany(comprasCotizacion, {
+    foreignKey: 'proveedorId', // Clave foránea en la tabla contact
+    onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
+  }); 
+
+comprasCotizacion.belongsTo(proveedor);
+
+
+
+
+//  RELACIONAMOS COTIZACION DE COMPRAS CON PROYECTOS
+
+comprasCotizacion.belongsToMany(requisicion, {
+  through: ComprasCotizacionProyecto,
+  foreignKey: 'comprasCotizacionId',
+  as: 'requisiciones'
+});
+
+requisicion.belongsToMany(comprasCotizacion, {
+  through: ComprasCotizacionProyecto,
+  foreignKey: 'requisicionId',
+  as: 'compras'
+}); 
 
 
 

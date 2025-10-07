@@ -22,7 +22,7 @@ async function getBodegaData(bodega){
   console.log(bodegaResult)
   return bodegaResult
 
-}
+} 
 // función para agregar materia prima primera vez
 async function registrarMovimientoMPONE(materiaId) {
     // 1. Crear el movimiento
@@ -36,7 +36,7 @@ async function registrarMovimientoMPONE(materiaId) {
         ubicacionOrigenId:1, 
         ubicacionDestinoId:1
     }); 
- 
+  
     // 2. Actualizar inventario según tipo
         await ajustarStock(materiaId, 1, 0);
 
@@ -117,6 +117,68 @@ async function registrarMovimiento({ materiaId, productoId, cantidad, tipoProduc
 }
 
 
+// Actualizar compromiso
+async function updateCompromiso(materiaId, entrega, cotizacionId, productoId){
+  // Consultamos compromiso
+  if(!productoId){
+      const consulta = await cotizacion_compromiso.findOne({
+      where: {
+        materiaId,
+        materiumId: materiaId,
+        cotizacionId
+      } 
+    });
+    // Si no hay, enviamos null
+    if(!consulta) return null;
+    // Avanzamos...
+    let cantidadEnCompromiso = consulta.cantidadComprometida;
+    let cantidadEnEntregada = consulta.cantidadEntregada;
+    let totalEntrega = Number(cantidadEnEntregada) + parseFloat(entrega);
+    let estadoData = totalEntrega >= cantidadEnCompromiso ? 'completo' : 'parcial';
+    // Procedemos a crear el compromiso
+    let actualizarCompromiso = await cotizacion_compromiso.update({
+      cantidadEntregada: totalEntrega,
+      estado: estadoData,
+    }, {
+      where: {
+        materiumId:materiaId,
+        materiaId,
+        cotizacionId
+      }
+    })
+ 
+    return actualizarCompromiso;
+
+  }else{
+
+      const consulta = await cotizacion_compromiso.findOne({
+      where: {
+        productoId: productoId,
+        cotizacionId
+      }
+    });
+    // Si no hay, enviamos null
+    if(!consulta) return null;
+    // Avanzamos...
+    let cantidadEnCompromiso = consulta.cantidadComprometida;
+    let cantidadEnEntregada = consulta.cantidadEntregada;
+    let totalEntrega = Number(cantidadEnEntregada) + parseFloat(entrega);
+    let estadoData = totalEntrega >= cantidadEnCompromiso ? 'completo' : 'parcial';
+    // Procedemos a crear el compromiso
+    let actualizarCompromiso = await cotizacion_compromiso.update({
+      cantidadEntregada: totalEntrega,
+      estado: estadoData,
+    }, {
+      where: {
+        productoId:productoId,
+        cotizacionId
+      }
+    })
+
+    return actualizarCompromiso;
+  }
+}
+
 
  
 async function ajustarStockProducto(productoId, ubicacionId, cantidad, cotizacionId) {
@@ -135,30 +197,70 @@ async function ajustarStockProducto(productoId, ubicacionId, cantidad, cotizacio
 }
 
 
+ 
+async function ajustarStock(materiaId, ubicacionId, cantidad, cotizacionId, productoId) {
+    if(!productoId){
+      let inventary = await inventario.findOne({ where: { materiumId: materiaId, ubicacionId } });
 
-async function ajustarStock(materiaId, ubicacionId, cantidad, cotizacionId) {
-    let inventary = await inventario.findOne({ where: { materiumId: materiaId, ubicacionId } });
-    if (!inventary) {
-        inventary = await inventario.create({ materiumId: materiaId, materiaId, ubicacionId, cantidad: 0, cantidadComprometida: 0 });
+      if (!inventary) {
+          inventary = await inventario.create({ materiumId: materiaId, materiaId, ubicacionId, cantidad: 0, cantidadComprometida: 0 });
+      }
+      inventary.cantidad = parseFloat(inventary.cantidad) + parseFloat(cantidad);
+      await inventary.save();
+
+    }else{
+
+      let inventary = await inventario.findOne({ where: { productoId: productoId, ubicacionId } });
+      if (!inventary) {
+          inventary = await inventario.create({ productoId: productoId, ubicacionId, cantidad: 0, cantidadComprometida: 0 });
+      }
+      inventary.cantidad = parseFloat(inventary.cantidad) + parseFloat(cantidad);
+
+      await inventary.save();
+
     }
-    inventary.cantidad = parseFloat(inventary.cantidad) + parseFloat(cantidad);
 
     if(cotizacionId){
-      inventary.cantidadComprometida = parseFloat(inventary.cantidadComprometida) + parseFloat(cantidad);
-      await updateCompromiso(materiaId, cantidad, cotizacionId)
+      if(!productoId){
+        let inventary = await inventario.findOne({ where: { materiumId: materiaId, ubicacionId } });
+
+        inventary.cantidadComprometida = parseFloat(inventary.cantidadComprometida) - parseFloat(cantidad);
+        await updateCompromiso(materiaId, cantidad, cotizacionId)
+
+        await inventary.save();
+
+      }else{
+        let inventary = await inventario.findOne({ where: { productoId: productoId, ubicacionId } });
+
+        inventary.cantidadComprometida = parseFloat(inventary.cantidadComprometida) + parseFloat(cantidad);
+        await updateCompromiso(materiaId, cantidad, cotizacionId)
+
+        await inventary.save();
+      }
     }
-    await inventary.save();
+
 }
  
 
-async function comprometerStock(materiaId, ubicacionId, cantidad) {
-  let inv = await inventario.findOne({ where: { materiumId: materiaId, ubicacionId } });
-  if (!inv) {
-    inv = await inventario.create({ materiaId, ubicacionId, cantidad: 0, cantidadComprometida: 0 });
+async function comprometerStock(materiaId, ubicacionId, cantidad, productoId) {
+  if(!productoId){
+    let inv = await inventario.findOne({ where: { materiumId: materiaId, ubicacionId } });
+    if (!inv) {
+      inv = await inventario.create({ materiaId, ubicacionId, cantidad: 0, cantidadComprometida: 0 });
+    }
+    inv.cantidadComprometida = parseFloat(Math.ceil(cantidad));
+    await inv.save();
+    return inv;
+  }else{
+    let inv = await inventario.findOne({ where: { productoId: productoId, ubicacionId } });
+    if (!inv) {
+      inv = await inventario.create({ productoId, ubicacionId, cantidad: 0, cantidadComprometida: 0 });
+    }
+    inv.cantidadComprometida = parseFloat(Math.ceil(cantidad));
+    await inv.save();
+    return inv;
   }
-  inv.cantidadComprometida = parseFloat(cantidad);
-  await inv.save();
-  return inv;
+  
 }
 
 
@@ -171,51 +273,24 @@ async function liberarCompromiso(materiaId, ubicacionId, cantidad) {
   return inv; 
 }
 
-async function createCompromiso(materiaId, cantidadComprometida, cotizacionId){
+async function createCompromiso(materiaId, cantidadComprometida, cotizacionId, productoId){
+  let numero = Math.ceil(cantidadComprometida);
+  console.log(numero)
   // Procedemos a crear el compromiso
   let createCompromiso = await cotizacion_compromiso.create({
-    cantidadComprometida,
+    cantidadComprometida: numero,
     cantidadEntrega: 0,
     estado: 'reservado',
-    materiaId,
-    materiumId: materiaId,
+    materiaId: !productoId ? materiaId : null,
+    materiumId: !productoId ? materiaId : null,
+    productoId: productoId,
     cotizacionId,
     ubicacionId: 3
-  })
+  })  
 
   return createCompromiso;
 }
 
-// Actualizar compromiso
-async function updateCompromiso(materiaId, entrega, cotizacionId){
-  // Consultamos compromiso
-  const consulta = await cotizacion_compromiso.findOne({
-    where: {
-      materiumId: materiaId,
-      cotizacionId
-    }
-  });
-  // Si no hay, enviamos null
-  if(!consulta) return null;
-  // Avanzamos...
-  console.log('LLEGA ACA')
-  let cantidadEnCompromiso = consulta.cantidadComprometida;
-  let cantidadEnEntregada = consulta.cantidadEntregada;
-  let totalEntrega = Number(cantidadEnEntregada) + parseFloat(entrega);
-  let estadoData = totalEntrega >= cantidadEnCompromiso ? 'completo' : 'parcial';
-  // Procedemos a crear el compromiso
-  let actualizarCompromiso = await cotizacion_compromiso.update({
-    cantidadEntregada: totalEntrega,
-    estado: estadoData,
-  }, {
-    where: {
-      materiumId:materiaId,
-      cotizacionId
-    }
-  })
-
-  return actualizarCompromiso;
-}
 
 
 module.exports = {

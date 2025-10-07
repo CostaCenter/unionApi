@@ -1,5 +1,5 @@
 const express = require('express');
-const { ubicacion, inventario, producto, materia, movimientoInventario, cotizacion_compromiso, cotizacion } = require('../db/db');
+const { ubicacion, client, inventario, producto, requisicion, materia, movimientoInventario, cotizacion_compromiso, cotizacion } = require('../db/db');
 const { Op } = require('sequelize');
 const dayjs = require('dayjs');
 const { validateEmailService } = require('./services/userServices');
@@ -29,6 +29,55 @@ const searchMPForInventario = async (req, res) => {
         }
 
         const kits = await materia.findAll({
+            where: whereClause, 
+            include:[
+                {
+                    model: inventario,
+                    where: {
+                        ubicacionId: bodegaId
+                    },
+                    required:true
+                },
+                ], 
+            attributes: { exclude: ['createdAt', 'updatedAt'] },
+            
+        }).catch((err => {
+            console.log(err);
+            return null; 
+        }));
+
+        if(!kits) return res.status(404).json({msg: 'No encontrado'})
+
+        res.status(200).json(kits);
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
+// Buscamos materia prima por Query - Inventario
+const searchPTForInventario = async (req, res) => {
+    try{
+        // Recibo dato por query
+        const { query,  bodegaId } = req.query; // Obtiene el parámetro de búsqueda desde la URL
+
+        if (!query) {
+            return res.status(400).json({ message: "Debes proporcionar un término de búsqueda." });
+        }
+
+        // 1. Empezamos con la condición que siempre se aplica.
+        const whereClause = {};
+
+        // 2. Aplicamos la lógica condicional para la búsqueda.
+        if (!isNaN(query) && query.trim() !== '') {
+            // SI ES UN NÚMERO, busca solo por ID.
+            whereClause.id = query;
+        } else {
+            // SI ES TEXTO, busca solo por nombre.
+            whereClause.item = { [Op.iLike]: `%${query}%` };
+        }
+
+        const kits = await producto.findAll({
             where: whereClause, 
             include:[
                 {
@@ -128,7 +177,6 @@ const getBodegaItems = async(req, res) => {
                 model: materia,
             }, {
                 model: producto,
-
             }],
             order:[['cantidad', 'DESC']]
         })
@@ -294,19 +342,21 @@ const getMovimientosMateriaBodega = async(req, res) => {
                         model: movimientoInventario, as: 'origen',
                         where: {
                             materiumId: itemId
-                        }
+                        },
+                        required: false
                     },
                     {
                         model: movimientoInventario, as: 'destino',
                         where: {
                             materiumId: itemId
-                        }
+                        },
+                        required: false
                     }
                 ]
-            }]
+            }] 
         })
-
-        if(!searchItem) return res.status(404).json({msg: 'Ha ocurrido un error en la principal'});
+        console.log(searchItem)
+        if(!searchItem) return res.status(404).json({msg: 'No hemos encontrado esto.'});
         res.status(200).json(searchItem);
 
     }catch(err){
@@ -316,45 +366,47 @@ const getMovimientosMateriaBodega = async(req, res) => {
 }
 
 // Obtener movimientos por proyecto
-const getMovimientosItemProyectos = async(req, res) => {
-    try{
-        const { cotizacionId, itemId} = req.params;
-        if(!cotizacionId || !itemId) return res.status(200).json({msg: 'Parámetros no validos'});
-        // Caso contrario, avanzamos
-        
-        const searchItem = await inventario.findOne({
-            where: {
-                materiumId: itemId,
-            },
-            include:[{
-                model: ubicacion,
-                include:[
-                    {
-                        model: movimientoInventario, as: 'origen',
-                        where: {
-                            materiumId: itemId,
-                            cotizacionId
-                        }
-                    },
-                    {
-                        model: movimientoInventario, as: 'destino',
-                        where: {
-                            materiumId: itemId,
-                            cotizacionId
-                        }
-                    }
-                ]
-            }]
-        })
-
-        if(!searchItem) return res.status(404).json({msg: 'Ha ocurrido un error en la principal'});
-        res.status(200).json(searchItem);
-
-    }catch(err){
-        console.log(err);
-        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+const getMovimientosItemProyectos = async (req, res) => {
+  try {
+    const { cotizacionId, itemId } = req.params;
+    if (!cotizacionId || !itemId) {
+      return res.status(400).json({ msg: "Parámetros no válidos" });
     }
-}
+
+    const searchItem = await inventario.findOne({
+      where: { materiumId: itemId },
+      include: [
+        {
+          model: ubicacion,
+          include: [
+            {
+              model: movimientoInventario,
+              as: "origen", // Asegúrate que exista esta asociación en el modelo
+              required: false, // para que no bloquee si no hay movimientos
+              where: { cotizacionId },
+            },
+            {
+              model: movimientoInventario,
+              as: "destino", // Asegúrate que exista esta asociación en el modelo
+              required: false,
+              where: { cotizacionId },
+            },
+          ],
+        },
+      ],
+    });
+
+    if (!searchItem) {
+      return res.status(404).json({ msg: "No hemos encontrado este item en inventario" });
+    }
+
+    res.status(200).json(searchItem);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: "Ha ocurrido un error en la principal" });
+  }
+};
+
 // Agregar todo los productos comercializables a bodega de productos
 const addPTToBodega = async (req, res) => {
     try{
@@ -401,7 +453,7 @@ const addMtToBodega = async (req, res) => {
                     ubicacionId: 1
                 }
             });
-
+ 
             if(!consultarEnIV){
                 registrarMovimientoMPONE(mp.id)
                 console.log('Agregado')
@@ -452,7 +504,7 @@ const registrarMovimientos = async (req, res) => {
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
     }
-} 
+}  
 
 const registrarMovimientosMultiples = async (req, res) => {
     try{
@@ -466,66 +518,145 @@ const registrarMovimientosMultiples = async (req, res) => {
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
     }
-} 
-
-const nuevoCompromiso = async (req, res) => {
+}   
+// obtenemos cotizaciones con compromisos para almacén
+const getCotizacionConCompromisos = async (req, res) => {
     try{
-        // Recibimos datos por body
+        // Ejecutamos función para consultar
+         const searchResults = await cotizacion.findAll({
+            include:[{model: client}, {
+                model: cotizacion_compromiso,
+                required:true
+            }]
+         });
+
+         if(!searchResults) return res.status(404).json({msg: 'No hay resultado'});
+         // Caso contrario, avanzamos
+         res.status(200).json(searchResults);
+
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'})
+    }
+}
+// Obtenemos una cotización con compromisos para almacen
+const getOneCotizacionConCompromisos = async (req, res) => {
+    try{
+        // Recibimos dato por params
         const { cotizacionId } = req.params;
         // Validamos
-        if(!cotizacionId) return res.status(400).json({msg: 'Parámetro no es valido.'});
-        // Caso contrario, avanzamos
-
-        const compromisoArray = [];
-
-        const getData = await axios.get(`http://192.168.1.15:3000/api/requisicion/get/${cotizacionId}`)
-        .then(res => res.data);
-
-
-        if(getData.cantidades){
-            getData.cantidades.forEach(many => {
-                let original = many.medidaOriginal; // Cantidad original
-                let unidad = many.unidad; // Unidad de medida
-                let consumo = many.cantidad; // Cantidad de consumo según unidad medida.
-                // Si es un mt2 cojo el lado A primero
-                let mt2A = many.unidad == 'mt2' ? many.medidaOriginal.split('X')[0] : 0
-                // Si es un mt2 cojo el lado B primero
-                let mt2B = many.unidad == 'mt2' ? many.medidaOriginal.split('X')[1] : 0
-                let productoLados = Number(Number(mt2A * mt2B));
-                let comprometer = unidad == 'kg' || unidad == 'mt' || unidad == 'unidad' ? Math.round(Number(consumo / Number(original)))
-                : unidad == 'mt2' ? Math.round(Number(consumo / productoLados)) : 1
-                let data = {
-                    unidad,
-                    cantidadComprometida: comprometer,
-                    cantidadEntregada: 0,
-                    estado: 'pendiente',
-                    materiaId: many.id, 
-                    materiumId: many.id,
-                    ubicacionId: 1,
-                    cotizacionId: Number(cotizacionId)
-                }
-
-                compromisoArray.push(data)
-            });
-        }
-
-
-        compromisoArray.forEach(async mp => {
-            await comprometerStock(mp.materiaId, 1, mp.cantidadComprometida)
-            await createCompromiso(mp.materiaId, mp.cantidadComprometida, cotizacionId)
+        if(!cotizacionId) return res.status(400).json({msg: 'El parámetro no es valido.'});
+        // Caso contrario, avanzamos...
+        const searchCoti = await cotizacion.findByPk(cotizacionId, {
+            include:[{
+                model: requisicion,
+                as: 'requisiciones'
+            },{
+                model: client
+            },{
+                model: cotizacion_compromiso,
+                include:[{
+                    model: materia
+                }, {model: producto}],
+                required: true,
+            }]
         });
- 
-        res.status(200).json(compromisoArray);
 
+        if(!searchCoti) return res.status(404).json({msg: 'No hemos encontrado esto'});
+        // Caso contrario, avanzamos
+        res.status(200).json(searchCoti);
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
+const nuevoCompromiso = async (req, res) => {
+    try {
+        const { cotizacionId } = req.params;
+        if (!cotizacionId) return res.status(400).json({ msg: 'Parámetro no es válido.' });
+
+        const compromisoArray = [];
+
+        const getData = await axios
+            .get(`https://unionapi-production.up.railway.app/api/requisicion/get/${cotizacionId}`)
+            .then(res => res.data);
+
+        if (getData.cantidades) {
+            getData.cantidades.forEach(many => {
+                let unidad = many.unidad;
+                let consumo = Number(many.cantidad);
+
+                let original = 0;
+                if (unidad !== 'mt2') {
+                    original = Number(many.medidaOriginal);
+                }
+
+                let productoLados = 0;
+                if (unidad === 'mt2') {
+                    const [ladoA, ladoB] = many.medidaOriginal.split('X').map(Number);
+                    if (!isNaN(ladoA) && !isNaN(ladoB)) {
+                        productoLados = ladoA * ladoB;
+                    }
+                }
+
+                let comprometer = 1;
+                if ((unidad === 'kg' || unidad === 'mt' || unidad === 'unidad') && original > 0) {
+                    comprometer = consumo / original;
+                } else if (unidad === 'mt2' && productoLados > 0) {
+                    comprometer = consumo / productoLados;
+                }
+
+                compromisoArray.push({
+                    unidad,
+                    cantidadComprometida: Math.ceil(comprometer),
+                    cantidadEntregada: 0,
+                    estado: 'pendiente',
+                    materiaId: many.id,
+                    materiumId: many.id,
+                    ubicacionId: 1,
+                    cotizacionId: Number(getData.requisicion.cotizacionId)
+                });
+            });
+        }
+
+        // Productos 
+        if (getData.resumenProductos) {
+            getData.resumenProductos.forEach(prod => {
+                compromisoArray.push({
+                    unidad: prod.unidad,
+                    cantidadComprometida: Math.ceil(prod.cantidad),
+                    cantidadEntregada: 0,
+                    estado: 'pendiente',
+                    productoId: prod.id, // 👈 identificador de producto
+                    ubicacionId: 1,
+                    cotizacionId: Number(getData.requisicion.cotizacionId)
+                });
+            });
+        }
+        for (const mp of compromisoArray) {
+            if (mp.materiaId) {
+                // comprometer materia prima
+                await comprometerStock(mp.materiaId, 1, mp.cantidadComprometida);
+                await createCompromiso(mp.materiaId, mp.cantidadComprometida, getData.requisicion.cotizacionId);
+            } else if (mp.productoId) {
+                // comprometer producto (puedes hacer otra lógica si aplica)
+                await comprometerStock(mp.materiaId, 2, mp.cantidadComprometida, mp.productoId);
+                await createCompromiso(mp.materiaId, mp.cantidadComprometida, getData.requisicion.cotizacionId, mp.productoId);
+            }
+        }
+        res.status(200).json(compromisoArray);
+
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
+    }
+};
 
 
 module.exports = {
     searchMPForInventario, // Buscar por nombre o id materia prima. En una bodega.
+    searchPTForInventario,  // Buscar por nombre o id Producto. En una bodega.
     getMovimientosBodega, // Obtenemos los mivimientos de una bodega en un rango de fechas.
     getBodegaItems, // Obtener items de bodega
     getBodegas, // Obtener bodegas información
@@ -538,4 +669,8 @@ module.exports = {
     getAllInventarioId, // Obtener registro de una materia prima inventario
     getMovimientosMateriaBodega, // OBtener movimientos de item en una bodega
     getMovimientosItemProyectos, // Obtenemos los movimientos de un ITEM por proyecto
-}
+
+    // Vemos proyectos
+    getCotizacionConCompromisos, // Ver todos los proyectos - en almacén
+    getOneCotizacionConCompromisos, // Ver un proyecto - En almacén por params.    
+} 

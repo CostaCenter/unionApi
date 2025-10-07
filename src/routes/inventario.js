@@ -1,5 +1,6 @@
 const express = require('express');
-const { newBodega, registrarMovimientos, nuevoCompromiso, addMtToBodega, addPTToBodega, getInvetarioMateriaPrima, getBodegas, getBodegaItems, getMovimientosBodega, searchMPForInventario, getAllInventarioId, getMovimientosMateriaBodega, getMovimientosItemProyectos } = require('../controllers/almacen');
+const { newBodega, registrarMovimientos, nuevoCompromiso, addMtToBodega, addPTToBodega, getInvetarioMateriaPrima, getBodegas, getBodegaItems, getMovimientosBodega, searchMPForInventario, getAllInventarioId, getMovimientosMateriaBodega, getMovimientosItemProyectos, getCotizacionConCompromisos, getOneCotizacionConCompromisos, searchPTForInventario } = require('../controllers/almacen');
+const { getAllCotizacionsComprasAlmacen, getOrdenDeCompraAlmacen } = require('../controllers/requisicionController');
 const router = express.Router();
 
 
@@ -26,6 +27,9 @@ router.route('/get/bodegas/movimientos/:bodegaId') // Obtenemos movimientos de u
 
 router.route('/get/bodegas/items/query/search')
     .get(searchMPForInventario)
+
+router.route('/get/bodegas/items/query/pt/search')
+    .get(searchPTForInventario)
  
 router.route('/get/materiaPrima/data/:mpId')
     .get(getInvetarioMateriaPrima)
@@ -33,13 +37,29 @@ router.route('/get/materiaPrima/data/:mpId')
 router.route('/post/bodega/addHowMany') // Registrar movimiento materia prima y producto terminado
     .post(registrarMovimientos)
 
-router.route('/post/bodega/materiaPrima/add')
+router.route('/post/bodega/materiaPrima/add') // INGRESAR TODA LA MP AL INVENTARIO
     .get(addMtToBodega)
-
-router.route('/post/bodega/producto/add')
+ 
+router.route('/post/bodega/producto/add') // INGRESAR TODO EL PT AL INVENTARIO
     .get(addPTToBodega)
 
 router.route('/get/aprobar/generar/:cotizacionId')
     .get(nuevoCompromiso)
 
-module.exports = router;  
+
+// Ordenes de compra para recibir
+router.route('/get/ordenesCompra/all/')
+    .get(getAllCotizacionsComprasAlmacen)
+
+router.route('/get/ordenesCompra/one/:ordenId')
+    .get(getOrdenDeCompraAlmacen)
+
+
+router.route('/get/almacen/proyectos/todo')
+    .get(getCotizacionConCompromisos)
+
+router.route('/get/almacen/proyecto/one/:cotizacionId')
+    .get(getOneCotizacionConCompromisos)
+
+    
+module.exports = router; 
