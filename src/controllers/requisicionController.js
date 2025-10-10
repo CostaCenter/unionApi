@@ -673,13 +673,13 @@ const addMateriaReq = async (req, res) => {
                 requisicionId,
                 materiumId: materiaId
             }
-        });
+        }); 
 
         if(searchAwait) return res.status(200).json({msg: 'Ya existe.'});
         const addItem = await itemRequisicion.create({
             requisicionId,
             materiumId: materiaId,
-            cantidad: Math.ceil(cantidad),
+            cantidad: cantidad,
             cantidadEntrega: 0,
             estado: 'pendiente'
         });

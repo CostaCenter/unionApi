@@ -116,6 +116,10 @@ const getAllCotizacionPorAprobar = async(req, res) => {
                 },
                 attributes: { exclude: ['updatedAt']},
                 include:[{
+                    model: requisicion,
+                    as: 'requisiciones',
+                    required:false
+                },{
                     model: condicionesPago 
                 }, {model: client}],
                  
