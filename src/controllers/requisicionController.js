@@ -559,6 +559,26 @@ const getRequisicion = async (req, res) => {
     }
 };
 
+// Actualizamos item compra
+const updateItemCompra = async (req, res) => {
+    try{
+        const { cantidadEntrega, comprasItemCotizacion } = req.body
+        if(!cantidadEntrega || !comprasItemCotizacion) return res.status(400).json({msg: 'Parametros no validos'})
+        // Avanzamos
+        const updateThat = await itemRequisicion.update({
+            cantidadEntrega: cantidadEntrega,
+        }, {
+            where: {
+                id: comprasItemCotizacion                
+            }
+        });
+
+        res.status(200).json({msg: 'Actualizado con exito'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
 
 const addAllItems = async (req, res) => {
     try {
@@ -593,12 +613,12 @@ const addAllItems = async (req, res) => {
 
                 let comprometer = 1;
                 if ((unidad === 'kg' || unidad === 'mt' || unidad === 'unidad') && original > 0) {
-                    comprometer = consumo / original;
+                    comprometer = consumo;
                 } else if (unidad === 'mt2' && productoLados > 0) {
-                    comprometer = consumo / productoLados;
+                    comprometer = consumo ;
                 }
 
-
+ 
 
                 let body = {
                     requisicionId,
@@ -1650,4 +1670,6 @@ module.exports = {
     addItemsToCotizacion, // Anexar item to cotización lado...
     deleteItemOnCotizacion, // Eliminar comprasItemCotizacion
     getDataProject, // Obtenemos detalles del projecto
+
+    updateItemCompra, // Actualizamos un item cotizaicon Compras directamente
 }
