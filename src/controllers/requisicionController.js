@@ -1,6 +1,6 @@
 const express = require('express');
 const { materia, producto, productPrice, productoCotizacion, cotizacion, serviceCotizacion, service, client, user, armado, kitCotizacion, armadoKits, areaCotizacion, armadoCotizacion, proveedor, extension, price, kit, itemKit, linea, categoria, requisicion, itemRequisicion, 
-    comprasCotizacion,  ComprasCotizacionProyecto, comprasCotizacionItem, db, Op} = require('../db/db');
+    comprasCotizacion,  ComprasCotizacionProyecto, comprasCotizacionItem, itemToProject, db, Op} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 const { default: axios } = require('axios');
@@ -852,11 +852,10 @@ const changeStateOfReq = async (req, res) => {
 const newCotizacionProvider = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { name, description, fecha, proveedor, proyecto } = req.body;
+        const { name, description, proveedor, proyectos } = req.body;
         // Validamos
-        if(!name || !description || !fecha || !proveedor || !proyecto) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        if(!name || !description || !proveedor || !proyectos) return res.status(400).json({msg: 'Parámetros no son validos.'});
         // Caso contrario, avanzamos
-        
         // Buscamos primero, que no exista una cotización con ese nombre y ese proyecto
         const searchCotizacion = await comprasCotizacion.findOne({
             where: {
@@ -867,7 +866,7 @@ const newCotizacionProvider = async (req, res) => {
                 model: requisicion,
                 as: 'requisiciones',
                 through: {
-                where: { requisicionId: proyecto }
+                where: { requisicionId: proyectos }
                 },
                 required: true
             }]
@@ -951,7 +950,7 @@ const changeToComprasToComprado = async (req, res) => {
         if(!searchData) return res.status(404).json({msg: 'No hemos encotrado esto.'});
         // Caso contrario, actualizamos 
         const updateData = await comprasCotizacion.update({
-            estadoPago: 'comprado',
+            estadoPago: 'pendiente',
             daysFinish: hoy.format('YYY-MM-DD')
         }, {
             where: {
@@ -968,7 +967,7 @@ const changeToComprasToComprado = async (req, res) => {
 
             return result;
         })
-
+ 
         if(!updateData) return res.status(501).json({msg: 'No hemos logrado actualizar esto'});
         await updateItems(comprasCotizacionId)
 
@@ -1003,7 +1002,7 @@ const changeToComprasToComprado = async (req, res) => {
             await requisicion.update(
                 { estado: nuevoEstado },
                 { where: { id: reqId } }
-            );
+            ); 
         }
         // Caso contrario, avanzamos
         res.status(200).json({msg: 'Actualizado...'});
@@ -1055,16 +1054,21 @@ const getOrdenDeCompra = async (req, res) => {
             include:[{model:proveedor},{
                 model: comprasCotizacionItem,
                 include:[{
+                    model: itemToProject,
+                    include:[{
+                        model: requisicion
+                    }]
+                },{ 
                     model: materia
-                }, {
+                }, { 
                     model: producto
                 }]
-            },{
+            },{ 
                 model: requisicion,
                 as: 'requisiciones',
                 through: { attributes: [] }
             } ]
-        });
+        }); 
 
         if(!searchOrden) return res.status(404).json({msg: 'No hemos encontrado esto'});
         // Caso contrario, avanzamos
@@ -1138,6 +1142,55 @@ const addItemToCotizacionProvider = async (req, res) => {
 
         // Caso contrario, avanzamos...
         const addItemCotizacion = await addItemToCotizacion(req.body);
+
+        if(!addItemCotizacion) return res.status(501).json({msg: 'No hemos logrado crear esto.'});
+        // Caso contrario, avanzamos...
+        res.status(201).json(addItemCotizacion);
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
+// Orden de compra
+const addItemToOrdenDeCompraProvider = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { cantidad, precioUnidad, descuento, precio, precioTotal, materiaId, productoId, cotizacionId, proyectos } = req.body;
+        // Validamos
+        if(!cantidad || !precioUnidad || !precioTotal || !cotizacionId) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos
+        
+        // Buscamos primero, que no exista una cotización con ese nombre y ese proyecto
+        const searchItemCotizacion = await comprasCotizacionItem.findOne({
+            where: {
+                materiaId,
+                productoId,
+                comprasCotizacionId: cotizacionId
+            },
+        });
+
+        if(searchItemCotizacion) return res.status(200).json({msg: 'Ya existe una cotización con este item'});
+
+        // Caso contrario, avanzamos...
+        const addItemCotizacion = await addItemToCotizacion(req.body);
+ 
+        // Ingresamos la repartición
+        if(proyectos && proyectos.length){
+            proyectos.map(async(pr) => {
+ 
+                const add = await itemToProject.create({
+                    cantidad: pr.cantidad,
+                    necesidad: pr.necesidad,
+                    estado: 'pendiente',
+                    requisicionId: pr.requisicionId,
+                    comprasCotizacionItemId: addItemCotizacion.id
+                })
+                return add;
+            })
+        }
+
 
         if(!addItemCotizacion) return res.status(501).json({msg: 'No hemos logrado crear esto.'});
         // Caso contrario, avanzamos...
@@ -1672,4 +1725,7 @@ module.exports = {
     getDataProject, // Obtenemos detalles del projecto
 
     updateItemCompra, // Actualizamos un item cotizaicon Compras directamente
+
+    // Anexar item 
+    addItemToOrdenDeCompraProvider, // Agregar item y repartición a orden de compra.
 }

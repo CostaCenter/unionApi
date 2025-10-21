@@ -1,5 +1,6 @@
+const dayjs = require('dayjs');
 const { cotizacion, kitCotizacion, requisicion, comprasCotizacion,  ComprasCotizacionProyecto, 
-    comprasCotizacionItem, itemRequisicion, Op
+    comprasCotizacionItem, itemRequisicion, itemToProject, Op
 } = require('../../db/db');
 
 // Crear requsición
@@ -29,15 +30,17 @@ const createRequisicion = async(nombre, fecha, para, cotizacionId) => {
 // Nueva cotización de compras
 const nuevaCompra = async(body) => {
     const { name, description, fecha, proveedor, proyectos } = body;
-
+    
+    let time = dayjs();
+    
     const searchCotizacion = await comprasCotizacion.create({
         name,
         description, 
-        fecha,
+        fecha: time.format("YYYY-MM-DD"),
         proveedorId: proveedor
     }) 
     .then(async (result) => {
-
+ 
         proyectos.map(async (pr) => {
             const addToProyecto = await ComprasCotizacionProyecto.create({
                 name: result.name,
@@ -58,11 +61,13 @@ const nuevaCompra = async(body) => {
 
 // Anexar item o itemCompra a una cotización
 const addItemToCotizacion = async(body) => {
-    const { cantidad, precioUnidad, precioTotal, materiaId, productoId, cotizacionId, requisicion } = body;
+    const { cantidad, precioUnidad, descuento, precio, precioTotal, materiaId, productoId, cotizacionId, requisicion } = body;
 
     const addItem = await comprasCotizacionItem.create({
         cantidad, 
         precioUnidad,
+        descuento, 
+        precio,
         precioTotal,
         estado: 'pendiente',
         materiaId,
@@ -71,7 +76,7 @@ const addItemToCotizacion = async(body) => {
         productoId,
         comprasCotizacionId: cotizacionId
     })
-
+ 
     if(!addItem) return null;
     return addItem
 }
@@ -83,7 +88,10 @@ const updateItems =  async (cotizacion) => {
         const searchCotizacion = await comprasCotizacionItem.findAll({
             where: {
                 comprasCotizacionId: cotizacion
-            }
+            },
+            include:[{
+                model: itemToProject
+            }]
         });
         
         // Buscamos e iteramos...
@@ -91,18 +99,36 @@ const updateItems =  async (cotizacion) => {
         if(!searchCotizacion) return null;
 
         const a = searchCotizacion?.forEach( async (l) => {
+
             if(l.materiumId){
-                const update = await itemRequisicion.findOne({
-                    where: {
-                        materiumId: l.materiumId,
-                        requisicionId: l.requisicionId,
-                    }
+                l.itemToProjects.map(async (r) => {
+                    const getItemToUpdate = await itemRequisicion.findOne({
+                        where: {
+                            materiumId: l.materiumId,
+                            requisicionId: r.requisicionId
+                        }
+                    });
+                    let cantidadNueva = Number(getItemToUpdate.cantidadEntrega + r.cantidad)
+                    getItemToUpdate.cantidadEntrega = cantidadNueva;
+
+                    getItemToUpdate.estado = cantidadNueva < getItemToUpdate.necesidad ? 'parcialmente' : 'comprado'
+                    
+                    await getItemToUpdate.save()
                 })
-
-                update.cantidadEntrega = Number(update.cantidadEntrega) + Number(l.cantidad)
-
-                await update.save()
             }
+            // if(l.materiumId){
+            //     const update = await itemRequisicion.findOne({
+            //         where: {
+            //             materiumId: l.materiumId,
+            //             requisicionId: l.requisicionId,
+            //         },
+            //         include:[{model: itemToProject}]
+            //     })
+
+            //     update.cantidadEntrega = Number(update.cantidadEntrega) + Number(l.cantidad)
+
+            //     await update.save()
+            // }
         })
 
         const updateRequisicion = await requisicion.update({
@@ -119,6 +145,19 @@ const updateItems =  async (cotizacion) => {
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
+const giveItemToProjects = async (id) => {
+    try{
+        const update = await itemToProject.findByPk(id) 
+
+        update.estado = 'comprado';
+
+        await update.save()
+    }catch(err){
+        console.log(err)
+
     }
 }
 

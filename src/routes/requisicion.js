@@ -1,5 +1,5 @@
 const express = require('express');
-const { getAllRequisiciones, getRequisicion, getMultipleReq, changeStateOfReq, addProductToReq, addAllItems, addMateriaReq, realRequisicion, getRealProyectosRequisicion, getMateriaByComprar, getProveedoresComunes, newCotizacionProvider, addItemToCotizacionProvider, addSomeMuchCotizacionsProvider, getAllCotizacionsCompras, getCotizacionCompras, changeToCompras, changeToComprasToComprado, getAllOrdenesCompras, getOrdenDeCompra, changeItemCotizacionCompras, getProductosByComprar, getProveedoresComunesPT, addItemToCotizacionController, getProveedoresStats, addItemsToCotizacion, deleteItemOnCotizacion, getProveedoresStatsProductos, getDataProject, updateItemCompra } = require('../controllers/requisicionController');
+const { getAllRequisiciones, getRequisicion, getMultipleReq, changeStateOfReq, addProductToReq, addAllItems, addMateriaReq, realRequisicion, getRealProyectosRequisicion, getMateriaByComprar, getProveedoresComunes, newCotizacionProvider, addItemToCotizacionProvider, addSomeMuchCotizacionsProvider, getAllCotizacionsCompras, getCotizacionCompras, changeToCompras, changeToComprasToComprado, getAllOrdenesCompras, getOrdenDeCompra, changeItemCotizacionCompras, getProductosByComprar, getProveedoresComunesPT, addItemToCotizacionController, getProveedoresStats, addItemsToCotizacion, deleteItemOnCotizacion, getProveedoresStatsProductos, getDataProject, updateItemCompra, addItemToOrdenDeCompraProvider } = require('../controllers/requisicionController');
 const router = express.Router();
 
 
@@ -79,6 +79,10 @@ router.route('/post/get/cotizaciones/')
     .post(getAllCotizacionsCompras)
 getCotizacionCompras
 
+// AGREGAMOS ITEM A COTIZACION CON SU REPARTICIÓN
+router.route('/post/add/comprasCotizacion/item/add')
+    .post(addItemToOrdenDeCompraProvider)
+    
 // Obtenemos una cotizacion por params
 router.route('/get/get/cotizacion/:comprasCotizacionId')
     .get(getCotizacionCompras)
@@ -100,6 +104,8 @@ router.route('/get/get/almacen/itemCotizacion/:itemId')
 
 router.route('/get/project/get/project/:projectId')
     .get(getDataProject)
+
+
 
 module.exports = router; 
  

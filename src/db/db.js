@@ -51,7 +51,7 @@ const modelCotizacionCompromiso = require('./model/cotizacion_compromiso'); // C
 const modelComprasCotizacion = require('./model/comprasCotizacion'); // Cotización que proviene de los proveedores
 const modelComprasCotizacionProyecto = require('./model/cotizacionComprasProjecto'); // Relaciono el proyecto con la cotización
 const modelComprasCotizacionItem = require('./model/comprasCotizacionItem'); // Item que relaciona el proyecto y la compra
-
+const modelItemToProject = require('./model/itemForCompras'); // Item que da cantidades a los proyectos.
 
 const modelRequisicion = require('./model/requisicion');
 const modelItemRequisicion = require('./model/itemRequisicion');
@@ -141,6 +141,7 @@ modelCotizacionCompromiso(sequelize);
 modelComprasCotizacion(sequelize);
 modelComprasCotizacionProyecto(sequelize);
 modelComprasCotizacionItem(sequelize);
+modelItemToProject(sequelize);
 
 
 modelRequisicion(sequelize); 
@@ -163,7 +164,7 @@ const { user, proveedor, linea, categoria, materia, producto, extension, price, 
   client, versionCotizacion, cotizacion, condicionesPago, planPago, pagoRecibido, notaCotizacion, armado, kitCotizacion, requisicion, itemRequisicion, armadoCotizacion, armadoKits, log, percentage,
   permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion,
   ubicacion, movimientoInventario, inventario, cotizacion_compromiso, comprar_grupo, 
-  comprasCotizacion, ComprasCotizacionProyecto, comprasCotizacionItem
+  comprasCotizacion, ComprasCotizacionProyecto, comprasCotizacionItem, itemToProject
 } = sequelize.models; 
 
 
@@ -235,6 +236,19 @@ producto.hasMany(comprasCotizacionItem, {
   onDelete: 'CASCADE' 
 }); 
 comprasCotizacionItem.belongsTo(producto);
+
+
+// Repartiendo cantidades
+comprasCotizacionItem.hasMany(itemToProject, {
+  foreignKey: 'comprasCotizacionItemId',
+})
+itemToProject.belongsTo(comprasCotizacionItem)
+
+requisicion.hasMany(itemToProject, {
+  foreignKey: 'requisicionId',
+})
+itemToProject.belongsTo(requisicion)
+
 
 
 // Relación de cotización y proveedor

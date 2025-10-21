@@ -10,6 +10,12 @@ module.exports = sequelize => {
         precioUnidad: {
             type: DataTypes.STRING
         },
+        descuento: {
+            type: DataTypes.STRING
+        },
+        precio: {
+            type: DataTypes.STRING
+        },
         precioTotal: { // Resultado de precio unidad x Cantidad total
             type: DataTypes.STRING
         },
@@ -17,5 +23,5 @@ module.exports = sequelize => {
             type: DataTypes.STRING,
             defaultValue: 'pendiente'
         }
-    }) 
-}    
+    })  
+}     
