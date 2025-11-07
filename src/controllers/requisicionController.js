@@ -1041,6 +1041,246 @@ const getAllOrdenesCompras = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
     }
 }
+// Obtenemos ordenes de compras por filtro 
+// controllers/comprasController.js (ejemplo)
+
+function parseCsvIds(raw) {
+  if (!raw) return null;
+  if (Array.isArray(raw)) return raw.map(Number).filter(Boolean);
+  return String(raw)
+    .split(',')
+    .map(s => Number(s.trim()))
+    .filter(Boolean);
+}
+// QUERYS PARA BUSQUEDAS
+// Materia
+const buscarPorQueryMateria = async (req, res) => {
+    try { 
+      const { q, lineaId } = req.query; // ejemplo: /buscar?q=mesa
+  
+      const whereClause = {
+        };
+        // 2. Aplicamos la lógica condicional para la búsqueda.
+        if (!isNaN(q) && q.trim() !== '') {
+            // SI ES UN NÚMERO, busca solo por ID.
+            whereClause.id = q;
+        } else {
+                  // SI ES TEXTO, busca solo por nombre.
+            whereClause.description = { [Op.iLike]: `%${q}%` };
+        }
+
+        // Si llega un 'lineaId', se añade al filtro
+        if (lineaId) {
+            whereClause.lineaId = lineaId;
+
+        }
+
+      const resultados = await materia.findAll({
+        where: whereClause, 
+        include:[{
+            model: price,
+            where: {
+                state: 'active'
+            }
+        },{
+            model: linea,
+        }, {
+            model: categoria
+        }],
+      });
+  
+      res.json(resultados);
+  
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Error en la búsqueda' });
+    }
+}
+// Requisicion
+const buscarPorQueryRequisicion = async (req, res) => {
+    try { 
+      const { q } = req.query; // ejemplo: /buscar?q=mesa
+  
+      const whereClause = {
+        };
+        // 2. Aplicamos la lógica condicional para la búsqueda.
+        if (!isNaN(q) && q.trim() !== '') {
+            // SI ES UN NÚMERO, busca solo por ID.
+            whereClause.id = q;
+        } else {
+                  // SI ES TEXTO, busca solo por nombre.
+            whereClause.nombre = { [Op.iLike]: `%${q}%` };
+        }
+
+        // Si llega un 'lineaId', se añade al filtro
+
+      const resultados = await requisicion.findAll({
+        where: whereClause, 
+        include:[{
+            model: cotizacion,
+            include:[{
+                model: client
+            }]
+        }],
+      });
+  
+      res.json(resultados);
+  
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Error en la búsqueda' });
+    }
+}
+// Proveedor
+const buscarPorQueryProveedor = async (req, res) => {
+    try { 
+      const { q } = req.query; // ejemplo: /buscar?q=mesa
+  
+      const whereClause = {
+        };
+        // 2. Aplicamos la lógica condicional para la búsqueda.
+        if (!isNaN(q) && q.trim() !== '') {
+            // SI ES UN NÚMERO, busca solo por ID.
+            whereClause.id = q;
+        } else {
+                  // SI ES TEXTO, busca solo por nombre.
+            whereClause.nombre = { [Op.iLike]: `%${q}%` };
+        }
+
+        // Si llega un 'lineaId', se añade al filtro
+
+      const resultados = await proveedor.findAll({
+        where: whereClause,
+      });
+  
+      res.json(resultados);
+  
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Error en la búsqueda' });
+    }
+}
+// Orden
+const buscarPorQueryOrden = async (req, res) => {
+    try { 
+      const { q } = req.query; // ejemplo: /buscar?q=mesa
+  
+      const whereClause = {
+        };
+        // 2. Aplicamos la lógica condicional para la búsqueda.
+        if (!isNaN(q) && q.trim() !== '') {
+            // SI ES UN NÚMERO, busca solo por ID.
+            whereClause.id = q;
+        } else {
+                  // SI ES TEXTO, busca solo por nombre.
+            whereClause.name = { [Op.iLike]: `%${q}%` };
+        }
+
+        // Si llega un 'lineaId', se añade al filtro
+
+      const resultados = await comprasCotizacion.findAll({
+        where: whereClause,
+      });
+  
+      res.json(resultados);
+  
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ message: 'Error en la búsqueda' });
+    }
+}
+
+// GET /api/ordenes (ejemplo)
+const getAllOrdenesComprasFiltro = async (req, res) => {
+  try {
+    const { proveedorIds, requisicionIds, materiaIds, productoIds } = req.query;
+    const where = {  };
+
+    if (proveedorIds) where.proveedorId = { [Op.in]: proveedorIds.split(',') };
+
+    const searchAll = await comprasCotizacion.findAll({
+      where,
+      include: [
+        {
+          model: requisicion,
+          as: 'requisiciones',
+          through: { attributes: [] },
+          ...(requisicionIds && {
+            where: { id: { [Op.in]: requisicionIds.split(',') } },
+          }),
+        },
+        {
+          model: comprasCotizacionItem,
+          include: [{ model: requisicion }],
+          ...(materiaIds && {
+            where: { materiaId: { [Op.in]: materiaIds.split(',') } },
+          }),
+        },
+        {
+          model: proveedor,
+          attributes: ['id', 'nombre'],
+        },
+      ],
+    });
+
+    if (!searchAll || !searchAll.length) {
+      return res.status(404).json({ msg: 'No hemos encontrado resultados' });
+    }
+
+    // ===========================
+    // 🔹 NUEVOS RESÚMENES
+    // ===========================
+    const resumenPorProveedor = {};
+    const resumenPorEtapa = {}; // agrupado por etapa y mes
+
+    searchAll.forEach((orden) => {
+      const totalOrden = orden.comprasCotizacionItems?.reduce((acc, item) => acc + Number(item.precioTotal || 0), 0) || 0;
+      const proveedorNombre = orden.proveedor?.nombre || 'Sin proveedor';
+
+      // 1️⃣ Agrupación por proveedor
+      if (!resumenPorProveedor[proveedorNombre]) {
+        resumenPorProveedor[proveedorNombre] = { total: 0, ordenes: 0 };
+      }
+      resumenPorProveedor[proveedorNombre].total += totalOrden;
+      resumenPorProveedor[proveedorNombre].ordenes += 1;
+
+      // 2️⃣ Agrupación por etapa (según fechas)
+      const etapas = [];
+      if (orden.fecha) etapas.push('preorden');
+      if (orden.dayCompras) etapas.push('compras');
+      if (orden.daysFinish) etapas.push('finalizadas');
+
+      etapas.forEach((etapa) => {
+        const fecha = new Date(orden.fecha || orden.dayCompras || orden.daysFinish);
+        const mes = fecha.toLocaleString('es-CO', { month: 'short' });
+
+        const key = `${etapa}_${mes}`;
+
+        if (!resumenPorEtapa[key]) {
+          resumenPorEtapa[key] = { etapa, mes, cantidad: 0, total: 0 };
+        }
+        resumenPorEtapa[key].cantidad += 1;
+        resumenPorEtapa[key].total += totalOrden;
+      });
+    });
+
+    const resumen = {
+      porProveedor: Object.entries(resumenPorProveedor).map(([proveedor, { total, ordenes }]) => ({
+        proveedor,
+        total,
+        ordenes,
+      })),
+      porEtapa: Object.values(resumenPorEtapa),
+    };
+
+    res.status(200).json({ data: searchAll, resumen });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ msg: 'Ha ocurrido un error en la principal' });
+  }
+};
+
+
 // OBTENEMOS ORDEN DE COMPRA
 const getOrdenDeCompra = async (req, res) => {
     try{
@@ -1709,6 +1949,7 @@ module.exports = {
     addItemToCotizacionController, // Añadir item a una cotización especifica desde afuera.
     addSomeMuchCotizacionsProvider, // Crear cotizaciones necesarias con sus itemComprasCotizaciones
     getAllCotizacionsCompras, // Obtenemos cotizaciones por proyectos
+    getAllOrdenesComprasFiltro, // Para filtrar
     getCotizacionCompras, // Obtenemos cotizacion puntual
     changeToCompras, // Cambiamos de estado la cotización
     changeToComprasToComprado, // Actualizar a comprado
@@ -1728,4 +1969,10 @@ module.exports = {
 
     // Anexar item 
     addItemToOrdenDeCompraProvider, // Agregar item y repartición a orden de compra.
+
+    // FILTRO
+    buscarPorQueryMateria, // Buscamos materia prima por query
+    buscarPorQueryRequisicion, // Buscamos requisicion por query
+    buscarPorQueryProveedor, // Buscamos proveedor por query
+    buscarPorQueryOrden, // Buscamos orden por query
 }

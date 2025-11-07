@@ -1,5 +1,5 @@
 const express = require('express');
-const { newBodega, registrarMovimientos, nuevoCompromiso, addMtToBodega, addPTToBodega, getInvetarioMateriaPrima, getBodegas, getBodegaItems, getMovimientosBodega, searchMPForInventario, getAllInventarioId, getMovimientosMateriaBodega, getMovimientosItemProyectos, getCotizacionConCompromisos, getOneCotizacionConCompromisos, searchPTForInventario } = require('../controllers/almacen');
+const { newBodega, registrarMovimientos, nuevoCompromiso, addMtToBodega, addPTToBodega, getInvetarioMateriaPrima, getBodegas, getBodegaItems, getMovimientosBodega, searchMPForInventario, getAllInventarioId, getMovimientosMateriaBodega, getMovimientosItemProyectos, getCotizacionConCompromisos, getOneCotizacionConCompromisos, searchPTForInventario, getAllInventarioIdProducto } = require('../controllers/almacen');
 const { getAllCotizacionsComprasAlmacen, getOrdenDeCompraAlmacen } = require('../controllers/requisicionController');
 const router = express.Router();
 
@@ -16,6 +16,9 @@ router.route('/get/bodegas/items/:bodegaId') // Obtenemos item de una bodega esp
 router.route('/get/bodega/materia/one/:itemId/:ubicacionId') // Obtenemos una materia especifica
     .get(getAllInventarioId);
 
+router.route('/get/bodega/producto/one/:itemId/:ubicacionId')
+    .get(getAllInventarioIdProducto)
+
 router.route('/get/bodega/materia/data/:itemId/:ubicacionId') // Datos
     .get(getMovimientosMateriaBodega);
 
@@ -27,7 +30,7 @@ router.route('/get/bodegas/movimientos/:bodegaId') // Obtenemos movimientos de u
 
 router.route('/get/bodegas/items/query/search')
     .get(searchMPForInventario)
-
+ 
 router.route('/get/bodegas/items/query/pt/search')
     .get(searchPTForInventario)
  

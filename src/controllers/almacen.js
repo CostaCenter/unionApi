@@ -324,6 +324,63 @@ const getAllInventarioId = async(req, res) => {
     }
 } 
 
+// Obtener inventario item especifico
+const getAllInventarioIdProducto = async(req, res) => {
+    try{
+        // Recibimos el item ID y la ubicación. // Bodega, Proceso, Terminado...
+        const { itemId, ubicacionId } = req.params;
+        if(!itemId || !ubicacionId) return res.status(501).json({msg: 'No hemos encontrado esto.'});
+        
+        // Caso contrario, consultamos esto...
+        const searchItemInventario = await producto.findByPk(itemId, {
+            include: [{
+                model: inventario, 
+                include:[
+                    {
+                        model: ubicacion
+                }]
+            }, {
+                model: cotizacion_compromiso,
+                include:[{
+                    model: cotizacion
+                }]
+            }]
+        })
+        // const searchInventario = await inventario.findOne({
+        //     where: {
+        //         materiumId: itemId,
+        //         ubicacionId,
+        //     },
+        //     include:[{
+        //         model: materia
+        //     },
+        //     {
+        //         model: ubicacion,
+        //         include:[{ 
+        //             model: movimientoInventario, as: 'origen' 
+        //         },
+        //         { 
+        //             model: movimientoInventario, as: 'destino' 
+        //         }]
+        //     }
+            
+        //     ]
+        // }).catch(err => {
+        //     console.log(err);
+        //     return null;
+        // });
+
+        if(!searchItemInventario) return res.status(404).json({msg: 'No hemos encontrado esto aquí'});
+        // Caso contrario, avanzamos
+        res.status(200).json(searchItemInventario);
+        
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+} 
+
+
 const getMovimientosMateriaBodega = async(req, res) => {
     try{
         const { itemId, ubicacionId } = req.params;
@@ -667,6 +724,7 @@ module.exports = {
     addMtToBodega, // Agregar toda la materia prima a inventario. Bodega 1
     addPTToBodega, // agregar todo el producto comercializable a inventario. Bodega 2
     getAllInventarioId, // Obtener registro de una materia prima inventario
+    getAllInventarioIdProducto, // Obtener registor de una producto inventario - Bodega 2
     getMovimientosMateriaBodega, // OBtener movimientos de item en una bodega
     getMovimientosItemProyectos, // Obtenemos los movimientos de un ITEM por proyecto
 

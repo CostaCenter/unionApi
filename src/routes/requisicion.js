@@ -1,5 +1,5 @@
 const express = require('express');
-const { getAllRequisiciones, getRequisicion, getMultipleReq, changeStateOfReq, addProductToReq, addAllItems, addMateriaReq, realRequisicion, getRealProyectosRequisicion, getMateriaByComprar, getProveedoresComunes, newCotizacionProvider, addItemToCotizacionProvider, addSomeMuchCotizacionsProvider, getAllCotizacionsCompras, getCotizacionCompras, changeToCompras, changeToComprasToComprado, getAllOrdenesCompras, getOrdenDeCompra, changeItemCotizacionCompras, getProductosByComprar, getProveedoresComunesPT, addItemToCotizacionController, getProveedoresStats, addItemsToCotizacion, deleteItemOnCotizacion, getProveedoresStatsProductos, getDataProject, updateItemCompra, addItemToOrdenDeCompraProvider } = require('../controllers/requisicionController');
+const { getAllRequisiciones, getRequisicion, getMultipleReq, changeStateOfReq, addProductToReq, addAllItems, addMateriaReq, realRequisicion, getRealProyectosRequisicion, getMateriaByComprar, getProveedoresComunes, newCotizacionProvider, addItemToCotizacionProvider, addSomeMuchCotizacionsProvider, getAllCotizacionsCompras, getCotizacionCompras, changeToCompras, changeToComprasToComprado, getAllOrdenesCompras, getOrdenDeCompra, changeItemCotizacionCompras, getProductosByComprar, getProveedoresComunesPT, addItemToCotizacionController, getProveedoresStats, addItemsToCotizacion, deleteItemOnCotizacion, getProveedoresStatsProductos, getDataProject, updateItemCompra, addItemToOrdenDeCompraProvider, getAllOrdenesComprasFiltro, buscarPorQueryMateria, buscarPorQueryRequisicion, buscarPorQueryProveedor, buscarPorQueryOrden } = require('../controllers/requisicionController');
 const router = express.Router();
 
 
@@ -98,12 +98,25 @@ router.route('/get/get/admin/ordenesDeCompra')
  
 router.route('/get/get/admin/ordenDeCompra/:ordenId')
     .get(getOrdenDeCompra)
+router.route('/get/filter/compras/getAllOrden')
+    .get(getAllOrdenesComprasFiltro)
 
 router.route('/get/get/almacen/itemCotizacion/:itemId')
     .get(changeItemCotizacionCompras)
 
 router.route('/get/project/get/project/:projectId')
     .get(getDataProject)
+
+
+// QUERYS
+router.route('/get/filters/materiaPrima')
+    .get(buscarPorQueryMateria)
+router.route('/get/filters/requisicion')
+    .get(buscarPorQueryRequisicion)
+router.route('/get/filters/proveedor')
+    .get(buscarPorQueryProveedor)
+router.route('/get/filters/orden')
+    .get(buscarPorQueryOrden)
 
 
 
