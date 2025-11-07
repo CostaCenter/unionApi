@@ -56,6 +56,34 @@ const buscarPorQueryProducto = async (req, res) => {
       res.status(500).json({ message: 'Error en la búsqueda' });
     }
 }
+
+const getAllPriceProductoTerminadoProvider = async (req, res) => {
+    try{
+        const { productoId, proveedorId } = req.params
+ 
+        // Validamos la entrada...
+        if(!productoId || !proveedorId) return res.status(400).json({msg: 'Debes ingresar los parámetros'})
+        // Caso contrario, avanzamos
+        const searchPrices = await productPrice.findAll({
+            where: {
+                productoId: productoId,
+                proveedorId
+            },
+            include:[{
+                model: proveedor
+            }],
+            order:[['createdAt', 'ASC']]
+        });
+
+        if(!searchPrices) return res.status(404).json({msg: 'No hemos encontrado esto'});
+        // Caso contrario, avanzamos
+        res.status(200).json(searchPrices)
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
+    }
+}
+
 // Filtrar y agrupar
 const getProduccionPorFecha = async (req, res) => {
     try {
@@ -555,4 +583,5 @@ module.exports = {
     buscarPorQueryProducto, // Search by query
     updatePricesProductos, // Update prices
     updateToInactivePCMPPT, // Desactivar precio producto
+    getAllPriceProductoTerminadoProvider, // Producto terminado actualizacio de precios
 }

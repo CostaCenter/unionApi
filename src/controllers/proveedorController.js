@@ -1,5 +1,5 @@
 const express = require('express');
-const { proveedor } = require('../db/db');
+const { proveedor, materia, producto, price, productPrice } = require('../db/db');
 const { Op } = require('sequelize');
 // CONTROLADORES DEL CLIENTE
 
@@ -11,7 +11,28 @@ const getProvider = async(req, res) => {
         if(!providerId) return res.status(501).json({msg: 'parámetro no es valido.'});
         // Realizamos la consulta
         const searchProvider = await proveedor.findByPk(providerId ,{
-            order:[['createdAt', 'DESC']]
+            order:[['createdAt', 'DESC']],
+            include:[{
+                model: price,
+                where: {
+                        state: 'active'
+                },
+                include:[{
+                    model: materia, 
+                    
+                }],
+                required: false
+
+            }, {
+                model: productPrice,
+                where: {
+                    state: 'active'
+                },
+                include:[{
+                    model: producto,
+                }],
+                required: false
+            }]
         }).catch(err => {
             console.log(err);
             return null;
