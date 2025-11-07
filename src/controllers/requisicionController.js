@@ -1191,93 +1191,126 @@ const buscarPorQueryOrden = async (req, res) => {
 }
 
 // GET /api/ordenes (ejemplo)
+// GET /api/ordenes (ejemplo)
 const getAllOrdenesComprasFiltro = async (req, res) => {
-  try {
-    const { proveedorIds, requisicionIds, materiaIds, productoIds } = req.query;
-    const where = {  };
+    // Asegúrate de que tienes 'Op' importado desde Sequelize en este archivo o globalmente.
+    // Ejemplo de importación si fuera necesario: const { Op } = require('sequelize');
+    
+    try {
+        // 1. Incluir los nuevos parámetros de fecha en la desestructuración
+        const { proveedorIds, requisicionIds, materiaIds, productoIds, startDate, endDate } = req.query;
+        
+        const where = {}; 
 
-    if (proveedorIds) where.proveedorId = { [Op.in]: proveedorIds.split(',') };
+        // 2. Lógica existente para IDs
+        if (proveedorIds) where.proveedorId = { [Op.in]: proveedorIds.split(',') };
 
-    const searchAll = await comprasCotizacion.findAll({
-      where,
-      include: [
-        {
-          model: requisicion,
-          as: 'requisiciones',
-          through: { attributes: [] },
-          ...(requisicionIds && {
-            where: { id: { [Op.in]: requisicionIds.split(',') } },
-          }),
-        },
-        {
-          model: comprasCotizacionItem,
-          include: [{ model: requisicion }],
-          ...(materiaIds && {
-            where: { materiaId: { [Op.in]: materiaIds.split(',') } },
-          }),
-        },
-        {
-          model: proveedor,
-          attributes: ['id', 'nombre'],
-        },
-      ],
-    });
-
-    if (!searchAll || !searchAll.length) {
-      return res.status(404).json({ msg: 'No hemos encontrado resultados' });
-    }
-
-    // ===========================
-    // 🔹 NUEVOS RESÚMENES
-    // ===========================
-    const resumenPorProveedor = {};
-    const resumenPorEtapa = {}; // agrupado por etapa y mes
-
-    searchAll.forEach((orden) => {
-      const totalOrden = orden.comprasCotizacionItems?.reduce((acc, item) => acc + Number(item.precioTotal || 0), 0) || 0;
-      const proveedorNombre = orden.proveedor?.nombre || 'Sin proveedor';
-
-      // 1️⃣ Agrupación por proveedor
-      if (!resumenPorProveedor[proveedorNombre]) {
-        resumenPorProveedor[proveedorNombre] = { total: 0, ordenes: 0 };
-      }
-      resumenPorProveedor[proveedorNombre].total += totalOrden;
-      resumenPorProveedor[proveedorNombre].ordenes += 1;
-
-      // 2️⃣ Agrupación por etapa (según fechas)
-      const etapas = [];
-      if (orden.fecha) etapas.push('preorden');
-      if (orden.dayCompras) etapas.push('compras');
-      if (orden.daysFinish) etapas.push('finalizadas');
-
-      etapas.forEach((etapa) => {
-        const fecha = new Date(orden.fecha || orden.dayCompras || orden.daysFinish);
-        const mes = fecha.toLocaleString('es-CO', { month: 'short' });
-
-        const key = `${etapa}_${mes}`;
-
-        if (!resumenPorEtapa[key]) {
-          resumenPorEtapa[key] = { etapa, mes, cantidad: 0, total: 0 };
+        // 3. Lógica para filtrar por rango de FECHA (Usando createdAt) 📅
+        // ***************************************************************
+        if (startDate && endDate) {
+            // Filtrar entre las dos fechas (inclusive)
+            where.createdAt = {
+                [Op.between]: [startDate, endDate]
+            };
+        } else if (startDate) {
+            // Solo fecha de inicio (mayor o igual)
+            where.createdAt = {
+                [Op.gte]: startDate
+            };
+        } else if (endDate) {
+            // Solo fecha de fin (menor o igual)
+            where.createdAt = {
+                [Op.lte]: endDate
+            };
         }
-        resumenPorEtapa[key].cantidad += 1;
-        resumenPorEtapa[key].total += totalOrden;
-      });
-    });
+        // ***************************************************************
+        
+        const searchAll = await comprasCotizacion.findAll({
+            where, // Aplicar el objeto 'where' que ahora incluye 'createdAt'
+            include: [
+                {
+                    model: requisicion,
+                    as: 'requisiciones',
+                    through: { attributes: [] },
+                    ...(requisicionIds && {
+                        where: { id: { [Op.in]: requisicionIds.split(',') } },
+                    }),
+                },
+                {
+                    model: comprasCotizacionItem,
+                    include: [{ model: requisicion }],
+                    ...(materiaIds && {
+                        where: { materiaId: { [Op.in]: materiaIds.split(',') } },
+                    }),
+                },
+                {
+                    model: proveedor,
+                    attributes: ['id', 'nombre'],
+                },
+            ],
+        });
 
-    const resumen = {
-      porProveedor: Object.entries(resumenPorProveedor).map(([proveedor, { total, ordenes }]) => ({
-        proveedor,
-        total,
-        ordenes,
-      })),
-      porEtapa: Object.values(resumenPorEtapa),
-    };
+        if (!searchAll || !searchAll.length) {
+            return res.status(404).json({ msg: 'No hemos encontrado resultados' });
+        }
 
-    res.status(200).json({ data: searchAll, resumen });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ msg: 'Ha ocurrido un error en la principal' });
-  }
+        // ===========================
+        // 🔹 NUEVOS RESÚMENES (La lógica de resumen permanece igual, pero usará 
+        // los resultados ya filtrados por createdAt)
+        // ===========================
+        const resumenPorProveedor = {};
+        const resumenPorEtapa = {}; // agrupado por etapa y mes
+
+        searchAll.forEach((orden) => {
+            const totalOrden = orden.comprasCotizacionItems?.reduce((acc, item) => acc + Number(item.precioTotal || 0), 0) || 0;
+            const proveedorNombre = orden.proveedor?.nombre || 'Sin proveedor';
+
+            // 1️⃣ Agrupación por proveedor
+            if (!resumenPorProveedor[proveedorNombre]) {
+                resumenPorProveedor[proveedorNombre] = { total: 0, ordenes: 0 };
+            }
+            resumenPorProveedor[proveedorNombre].total += totalOrden;
+            resumenPorProveedor[proveedorNombre].ordenes += 1;
+
+            // 2️⃣ Agrupación por etapa (según fechas)
+            // Aquí puedes considerar usar 'createdAt' si quieres que el resumen 
+            // siempre se base en la fecha de creación de la orden, o mantener la lógica
+            // original si las otras fechas son importantes para el resumen.
+            const etapas = [];
+            // Si quieres que el resumen respete el filtro, pero la agrupación por mes
+            // se base en alguna de estas fechas:
+            if (orden.fecha) etapas.push('preorden');
+            if (orden.dayCompras) etapas.push('compras');
+            if (orden.daysFinish) etapas.push('finalizadas');
+
+            etapas.forEach((etapa) => {
+                const fecha = new Date(orden.fecha || orden.dayCompras || orden.daysFinish);
+                const mes = fecha.toLocaleString('es-CO', { month: 'short' });
+
+                const key = `${etapa}_${mes}`;
+
+                if (!resumenPorEtapa[key]) {
+                    resumenPorEtapa[key] = { etapa, mes, cantidad: 0, total: 0 };
+                }
+                resumenPorEtapa[key].cantidad += 1;
+                resumenPorEtapa[key].total += totalOrden;
+            });
+        });
+
+        const resumen = {
+            porProveedor: Object.entries(resumenPorProveedor).map(([proveedor, { total, ordenes }]) => ({
+                proveedor,
+                total,
+                ordenes,
+            })),
+            porEtapa: Object.values(resumenPorEtapa),
+        };
+
+        res.status(200).json({ data: searchAll, resumen });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: 'Ha ocurrido un error en la principal' });
+    }
 };
 
 
