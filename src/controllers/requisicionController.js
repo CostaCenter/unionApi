@@ -854,7 +854,7 @@ const newCotizacionProvider = async (req, res) => {
         // Recibimos datos por body
         const { name, description, proveedor, proyectos } = req.body;
         // Validamos
-        if(!name || !description || !proveedor || !proyectos) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        if(!name || !proveedor || !proyectos) return res.status(400).json({msg: 'Parámetros no son validos.'});
         // Caso contrario, avanzamos
         // Buscamos primero, que no exista una cotización con ese nombre y ese proyecto
         const searchCotizacion = await comprasCotizacion.findOne({
@@ -886,6 +886,31 @@ const newCotizacionProvider = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
     }
 }
+
+const giveNoteToOrden = async(req, res) => {
+    try{
+        // Recibo datos por body
+        const { ordenId, description } = req.body;
+        // Validamos que los datos entres
+        if(!ordenId || !description) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos
+
+        // Consultamos que la orden exista
+        const searchOrden = await comprasCotizacion.findByPk(ordenId)
+
+        if(!searchOrden) return res.status(404).json({msg: 'No hemos encontrado esto.'});
+        // Caso contrario, avanzamos
+
+        searchOrden.description = description;
+        await searchOrden.save()
+
+        res.status(200).json(searchOrden)
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
 
 const changeToCompras = async (req, res) => {
     try{
@@ -1978,6 +2003,7 @@ module.exports = {
 
     // COMPRAS
     newCotizacionProvider, // Nueva contización a un proveedor
+    giveNoteToOrden, // Dar nota o descripción a una orden de compra
     addItemToCotizacionProvider, // añadir item a una cotización
     addItemToCotizacionController, // Añadir item a una cotización especifica desde afuera.
     addSomeMuchCotizacionsProvider, // Crear cotizaciones necesarias con sus itemComprasCotizaciones

@@ -31,6 +31,6 @@ module.exports = sequelize => {
         },
         validez: {
             type: DataTypes.INTEGER
-        }
+        },
     })  
 }
