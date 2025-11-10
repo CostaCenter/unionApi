@@ -67,109 +67,192 @@ const realRequisicion = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
+
 // Obtener multiples requisiciones
 const getRealProyectosRequisicion = async (req, res) => {
-    try {
-        // Recibo datos por body
-        const { ids } = req.body;
-        if (!ids || !ids.length) {
-            return res.status(400).json({ msg: 'Parámetro inválido' });
-        }
-
-        const multiReq = await requisicion.findAll({
-            where: { id: { [Op.in]: ids } },
-            include: [
-                {
-                    model: cotizacion,
-                    include: [{ model: client }]
-                },
-                {
-                    model: itemRequisicion,
-                    include: [
-                        {
-                            model: materia,
-                            include: [{
-                                model: price,
-                                where: { state: 'active' }
-                            }]
-                        },
-                        {
-                            model: producto,
-                            include: [{
-                                model: productPrice,
-                                where: { state: 'active' }
-                            }]
-                        }
-                    ]
-                }
-            ]
-        });
-
-        if (!multiReq.length) {
-            return res.status(404).json({ msg: 'No encontramos requisiciones con esos IDs' });
-        }
-
-        const consolidado = {};
-        const plainReqs = multiReq.map(r => r.toJSON());
-
-        plainReqs.forEach(req => {
-            req.itemRequisicions.forEach(item => {
-                if (item.materium) {
-                    // Consolidado de materias
-                    const matId = `mat-${item.materium.id}`;
-                    if (!consolidado[matId]) {
-                        consolidado[matId] = {
-                            tipo: 'materia',
-                            id: item.materium.id,
-                            nombre: item.materium.description,
-                            medida: item.materium.medida,
-                            unidad: item.materium.unidad,
-                            precios: item.materium.prices,
-                            entregado: 0,
-                            totalCantidad: 0
-                        };
-                    }
-                    consolidado[matId].totalCantidad += Number(item.cantidad);
-                    consolidado[matId].entregado += Number(item.cantidadEntrega);
-                }
-
-                if (item.producto) {
-                    // Consolidado de productos
-                    const prodId = `prod-${item.producto.id}`;
-                    if (!consolidado[prodId]) {
-                        consolidado[prodId] = {
-                            tipo: 'producto',
-                            id: item.producto.id,
-                            nombre: item.producto.item,
-                            medida: item.producto.medida,
-                            unidad: item.producto.unidad,
-                            precios: item.producto.productPrices,
-                            entregado: 0,
-                            totalCantidad: 0
-                        };
-                    }
-                    consolidado[prodId].totalCantidad += Number(item.cantidad);
-                    consolidado[prodId].entregado += Number(item.cantidadEntrega);
-                }
-            });
-        });
-
-        // Lo devolvemos como array
-        const resultado = Object.values(consolidado);
-
-        let result = {
-            proyectos: multiReq,
-            consolidado: resultado,
-            totalRequisiciones: multiReq.length
-        };
-
-        res.status(200).json(result);
-
-    } catch (err) {
-        console.log(err);
-        res.status(500).json({ msg: 'Ha ocurrido un error en la principal' });
+  try {
+    const { ids } = req.body;
+    if (!ids || !ids.length) {
+      return res.status(400).json({ msg: 'Parámetro inválido' });
     }
+
+    const multiReq = await requisicion.findAll({
+      where: { id: { [Op.in]: ids } },
+      include: [
+        {
+          model: cotizacion,
+          include: [
+            { model: client },
+            {
+              model: areaCotizacion,
+              required: false,
+              include: [
+                {
+                  model: kit, // relación muchos a muchos
+                  as: 'kits',
+                  through: { attributes: ['cantidad', 'precio', 'descuento'] }, // tabla intermedia: kitCotizacion
+                  required: false
+                }
+              ]
+            }
+          ]
+        },
+        {
+          model: itemRequisicion,
+          include: [
+            {
+              model: materia,
+              include: [
+                {
+                  model: price,
+                  where: { state: 'active' },
+                  required: false
+                }
+              ],
+              required: false
+            },
+            {
+              model: producto,
+              include: [
+                {
+                  model: productPrice,
+                  where: { state: 'active' },
+                  required: false
+                }
+              ],
+              required: false
+            }
+          ]
+        }
+      ]
+    });
+
+    if (!multiReq.length) {
+      return res
+        .status(404)
+        .json({ msg: 'No encontramos requisiciones con esos IDs' });
+    }
+
+    const consolidado = {};
+    const plainReqs = multiReq.map(r => r.toJSON());
+    const kitsMap = {}; // { kitId: { id, nombre, totalKits, precioUnidad } }
+
+    // -------------------------------
+    // 1️⃣ Consolidado de materias y productos
+    // -------------------------------
+    plainReqs.forEach(req => {
+      req.itemRequisicions.forEach(item => {
+        if (item.materium) {
+          const matId = `mat-${item.materium.id}`;
+          if (!consolidado[matId]) {
+            consolidado[matId] = {
+              tipo: 'materia',
+              id: item.materium.id,
+              nombre: item.materium.description,
+              medida: item.materium.medida,
+              unidad: item.materium.unidad,
+              precios: item.materium.prices,
+              entregado: 0,
+              totalCantidad: 0
+            };
+          }
+          consolidado[matId].totalCantidad += Number(item.cantidad);
+          consolidado[matId].entregado += Number(item.cantidadEntrega);
+        }
+
+        if (item.producto) {
+          const prodId = `prod-${item.producto.id}`;
+          if (!consolidado[prodId]) {
+            consolidado[prodId] = {
+              tipo: 'producto',
+              id: item.producto.id,
+              nombre: item.producto.item,
+              medida: item.producto.medida,
+              unidad: item.producto.unidad,
+              precios: item.producto.productPrices,
+              entregado: 0,
+              totalCantidad: 0
+            };
+          }
+          consolidado[prodId].totalCantidad += Number(item.cantidad);
+          consolidado[prodId].entregado += Number(item.cantidadEntrega);
+        }
+      });
+    });
+
+    // -------------------------------
+    // 2️⃣ Consolidado de kits (desde areaCotizacion -> kits -> kitCotizacion)
+    // -------------------------------
+    plainReqs.forEach(req => {
+      const cot = req.cotizacion;
+      if (!cot || !cot.areaCotizacions) return;
+
+      cot.areaCotizacions.forEach(area => {
+        if (!area.kits) return;
+
+        area.kits.forEach(k => {
+          const kitData = k.kitCotizacion; // tabla intermedia
+          const cantidad = Number(kitData?.cantidad || 0);
+          const precioUnidad = Number(kitData?.precio || 0);
+          const kitId = k.id;
+
+          if (!kitsMap[kitId]) {
+            kitsMap[kitId] = {
+              tipo: 'kit',
+              id: kitId,
+              nombre: k.name || k.item || `Kit ${kitId}`,
+              totalKits: 0,
+              precioUnidad
+            };
+          }
+
+          kitsMap[kitId].totalKits += cantidad;
+          if (!kitsMap[kitId].precioUnidad && precioUnidad)
+            kitsMap[kitId].precioUnidad = precioUnidad;
+
+          // también lo añadimos al consolidado general (opcional)
+          const key = `kit-${kitId}`;
+          if (!consolidado[key]) {
+            consolidado[key] = {
+              tipo: 'kit',
+              id: kitId,
+              nombre: k.nombre || k.item || `Kit ${kitId}`,
+              medida: null,
+              unidad: null,
+              precios: [{ precioUnidad }],
+              entregado: 0,
+              totalCantidad: 0
+            };
+          }
+          consolidado[key].totalCantidad += cantidad;
+        });
+      });
+    });
+
+    // -------------------------------
+    // 3️⃣ Estructura final
+    // -------------------------------
+    const resultado = Object.values(consolidado);
+    const kitsConsolidados = Object.values(kitsMap);
+
+    const result = {
+      proyectos: multiReq,
+      consolidado: resultado,
+      totalRequisiciones: multiReq.length,
+      kitsConsolidados // nuevo campo (no rompe nada)
+    };
+
+    res.status(200).json(result);
+  } catch (err) {
+    console.log(err);
+    res
+      .status(500)
+      .json({ msg: 'Ha ocurrido un error en la principal', error: err.message });
+  }
 };
+
+
+
 
 
 // Obtener materia prima en proceso de comprar
@@ -1966,26 +2049,95 @@ const getDataProject = async (req, res) => {
                             }
                         ]
                     }, {model: client}]
-                }, {
+                },
+                {
+                    model: comprasCotizacion,
+                    as: 'compras',
+                    include: [{
+                        model: comprasCotizacionItem,
+                        where: {
+                            estado: 'aprobado'
+                        },
+                        include:[{
+                            model: itemToProject,
+                            where: {
+                                requisicionId: projectId
+                            },
+                            required: false // por si alguna línea no tiene itemToProjects
+                        }],
+                        required: false
+                    }],
+                    required: false
+                },
+                {
                     model: comprasCotizacionItem,
                     include: [{model: materia}, {model: producto},{
                         model: comprasCotizacion,
                         include:[{
                             model: proveedor
                         }]
-                    }]
-                }]
+                    }],
+                    required: false
+                } ]
             }
         )
 
         if(!searchReq) return res.status(404).json({msg: 'no hemos encontrado esto'});
+
+        // --- ADAPTACIÓN: convertir a objeto plano para poder añadir campos sin mutar instancias Sequelize ---
+        const plain = (typeof searchReq.toJSON === 'function') ? searchReq.toJSON() : searchReq;
+
+        // Recorremos compras -> comprasCotizacionItems -> itemToProject y prorrateamos
+        if (Array.isArray(plain.compras)) {
+            plain.compras.forEach(compra => {
+                // cada compra tiene comprasCotizacionItems (ya filtradas por estado: aprobado)
+                const itemsLinea = compra.comprasCotizacionItems || [];
+                itemsLinea.forEach(linea => {
+                    // monto disponible en esta línea (puede venir en 'precioTotal' o 'precio')
+                    const montoLinea = Number(linea.precioTotal ?? linea.precio ?? 0);
+
+                    // itemToProjects vinculados a esta línea (según include)
+                    const usos = Array.isArray(linea.itemToProjects) ? linea.itemToProjects : [];
+
+                    // sumar total consumo (cantidad) - preferimos campo 'cantidad' o 'necesidad'
+                    const totalConsumo = usos.reduce((s, it) => {
+                        const c = Number(it.cantidad ?? it.necesidad ?? 0);
+                        return s + (isNaN(c) ? 0 : c);
+                    }, 0);
+
+                    // Añadir resumen opcional a la línea (inofensivo)
+                    linea._prorrateoResumen = {
+                        montoLinea,
+                        totalConsumo
+                    };
+
+                    // Calcular y agregar valorAsignado a cada itemToProject
+                    linea.itemToProjects = usos.map(it => {
+                        const cantidad = Number(it.cantidad ?? it.necesidad ?? 0);
+                        const cantidadSafe = isNaN(cantidad) ? 0 : cantidad;
+
+                        const valorAsignado = totalConsumo > 0
+                            ? (cantidadSafe / totalConsumo) * montoLinea
+                            : 0;
+
+                        // devolvemos el objeto con el nuevo campo (redondeado a 0 decimales)
+                        return {
+                            ...it,
+                            valorAsignado: Math.round(Number(valorAsignado || 0))
+                        };
+                    });
+                });
+            });
+        }
+
         // Caso contrario, avanzamos
-        res.status(200).json(searchReq)
+        res.status(200).json(plain)
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
     }
 }
+
 module.exports = { 
     getAllRequisiciones, // Obtener todas las requsiciones
     getRequisicion, // Obtener una requisición 
