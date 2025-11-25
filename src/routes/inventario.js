@@ -1,6 +1,7 @@
 const express = require('express');
-const { newBodega, registrarMovimientos, nuevoCompromiso, addMtToBodega, addPTToBodega, getInvetarioMateriaPrima, getBodegas, getBodegaItems, getMovimientosBodega, searchMPForInventario, getAllInventarioId, getMovimientosMateriaBodega, getMovimientosItemProyectos, getCotizacionConCompromisos, getOneCotizacionConCompromisos, searchPTForInventario, getAllInventarioIdProducto } = require('../controllers/almacen');
+const { newBodega, registrarMovimientos, nuevoCompromiso, addMtToBodega, addPTToBodega, getInvetarioMateriaPrima, getBodegas, getBodegaItems, getMovimientosBodega, searchMPForInventario, getAllInventarioId, getMovimientosMateriaBodega, getMovimientosItemProyectos, getCotizacionConCompromisos, getOneCotizacionConCompromisos, searchPTForInventario, getAllInventarioIdProducto, getMovimientosProductosBodega, getItemOverviewByBodegaController, listarItemsController } = require('../controllers/almacen');
 const { getAllCotizacionsComprasAlmacen, getOrdenDeCompraAlmacen } = require('../controllers/requisicionController');
+const { registrarMovimientoAlmacen } = require('../controllers/services/inventarioServices');
 const router = express.Router();
 
 
@@ -25,6 +26,10 @@ router.route('/get/bodega/materia/data/:itemId/:ubicacionId') // Datos
 router.route('/get/bodega/materia/data/cotizacion/:itemId/:cotizacionId')
     .get(getMovimientosItemProyectos)
 
+
+router.route('/get/bodega/producto/data/:itemId/:ubicacionId') // Datos
+    .get(getMovimientosProductosBodega);
+
 router.route('/get/bodegas/movimientos/:bodegaId') // Obtenemos movimientos de una bodega especifica.
     .get(getMovimientosBodega); 
 
@@ -38,6 +43,9 @@ router.route('/get/materiaPrima/data/:mpId')
     .get(getInvetarioMateriaPrima)
 
 router.route('/post/bodega/addHowMany') // Registrar movimiento materia prima y producto terminado
+    .post(registrarMovimientos)
+
+router.route('/post/bodega/moviemitos/add')
     .post(registrarMovimientos)
 
 router.route('/post/bodega/materiaPrima/add') // INGRESAR TODA LA MP AL INVENTARIO
@@ -64,5 +72,11 @@ router.route('/get/almacen/proyectos/todo')
 router.route('/get/almacen/proyecto/one/:cotizacionId')
     .get(getOneCotizacionConCompromisos)
 
+// VER ITEM EN BODEGA
+router.route('/get/plus/item/')
+    .get(getItemOverviewByBodegaController)
     
+// VER ITEMS EN BODEGA
+router.route('/get/plus/bodegas')
+    .get(listarItemsController);
 module.exports = router; 

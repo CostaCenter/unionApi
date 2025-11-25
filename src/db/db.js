@@ -47,7 +47,7 @@ const modelInventario = require('./model/inventario'); // Inventario
 const modelUbicacion = require('./model/ubicacion'); // Ubicación.
 const modelMovimientoInventario = require('./model/movimientosInventario'); // Movimiento en inventario
 const modelCotizacionCompromiso = require('./model/cotizacion_compromiso'); // Compromisos de la cotización
-
+const modelInventarioItemFisico = require('./model/inventarioItemfisico');
 const modelComprasCotizacion = require('./model/comprasCotizacion'); // Cotización que proviene de los proveedores
 const modelComprasCotizacionProyecto = require('./model/cotizacionComprasProjecto'); // Relaciono el proyecto con la cotización
 const modelComprasCotizacionItem = require('./model/comprasCotizacionItem'); // Item que relaciona el proyecto y la compra
@@ -136,7 +136,7 @@ modelInventario(sequelize);
 modelUbicacion(sequelize);
 modelMovimientoInventario(sequelize); 
 modelCotizacionCompromiso(sequelize);
-
+modelInventarioItemFisico(sequelize);
 
 modelComprasCotizacion(sequelize);
 modelComprasCotizacionProyecto(sequelize);
@@ -163,7 +163,8 @@ modelComprarGrupo(sequelize);
 const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, requiredKit, adjuntRequired, adjunt, areaKit, itemKit, priceKit,
   client, versionCotizacion, cotizacion, condicionesPago, planPago, pagoRecibido, notaCotizacion, armado, kitCotizacion, requisicion, itemRequisicion, armadoCotizacion, armadoKits, log, percentage,
   permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion,
-  ubicacion, movimientoInventario, inventario, cotizacion_compromiso, comprar_grupo, 
+  ubicacion, movimientoInventario,
+  inventarioItemFisico, inventario, cotizacion_compromiso, comprar_grupo, 
   comprasCotizacion, ComprasCotizacionProyecto, comprasCotizacionItem, itemToProject
 } = sequelize.models; 
 
@@ -634,6 +635,59 @@ itemRequisicion.belongsTo(materia);
 // ---------------------------
 // INVENTARIO Y COMPRAS 
 // ---------------------------
+
+comprasCotizacion.hasMany(inventarioItemFisico, {
+    foreignKey: 'comprasCotizacionId', // La clave foránea en la tabla inventarioItemFisico
+    onDelete: 'SET NULL'       // Recomendado: Si borras la OC, no borras el inventario, solo pierdes el enlace de origen.
+});
+
+inventarioItemFisico.belongsTo(comprasCotizacion, {
+    foreignKey: 'comprasCotizacionId'
+});
+
+
+// Producto terminado e inventario 
+producto.hasMany(inventarioItemFisico, {
+    foreignKey: 'productoId', // La clave foránea en la tabla inventarioItemFisico
+    onDelete: 'CASCADE'       // Si borras el producto, puedes borrar el stock asociado (o usar 'SET NULL').
+});
+
+inventarioItemFisico.belongsTo(producto, {
+    foreignKey: 'productoId'
+});
+
+// Materia prima e item inventario
+materia.hasMany(inventarioItemFisico, {
+    foreignKey: 'materiumId', // La clave foránea en la tabla inventarioItemFisico
+    onDelete: 'CASCADE'       // Si borras el producto, puedes borrar el stock asociado (o usar 'SET NULL').
+});
+
+inventarioItemFisico.belongsTo(materia, {
+    foreignKey: 'materiumId'
+});
+
+// Ubicación e InventarioItemFisico
+ubicacion.hasMany(inventarioItemFisico, {
+    foreignKey: 'ubicacionId', // La clave foránea en la tabla inventarioItemFisico
+    onDelete: 'RESTRICT'       // Sugerencia: Evita borrar una ubicación si aún tiene stock asociado.
+});
+
+inventarioItemFisico.belongsTo(ubicacion, {
+    foreignKey: 'ubicacionId'
+}); 
+
+inventarioItemFisico.hasMany(movimientoInventario, {
+    foreignKey: 'itemFisicoId', 
+    as: 'historialMovimientos', // Nombre para acceder a la relación (ej: item.getHistorialMovimientos())
+    onDelete: 'CASCADE'         // Si se borra la pieza por algún ajuste (raro), se borran sus movimientos históricos.
+});
+
+movimientoInventario.belongsTo(inventarioItemFisico, {
+    foreignKey: 'itemFisicoId',
+    as: 'itemAfectado' // Nombre para acceder a la relación (ej: movimiento.getItemAfectado())
+}); 
+
+
 ubicacion.hasMany(inventario, {
   foreignKey: 'ubicacionId', // Clave foránea en la tabla inventario
   onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario

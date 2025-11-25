@@ -3,7 +3,7 @@ const { ubicacion, client, inventario, producto, requisicion, materia, movimient
 const { Op } = require('sequelize');
 const dayjs = require('dayjs');
 const { validateEmailService } = require('./services/userServices');
-const { registrarMovimiento, registrarMovimientoMPONE, registrarMovimientoPTONE, comprometerStock, createCompromiso, getBodegaData } = require('./services/inventarioServices');
+const { registrarMovimiento, registrarMovimientoMPONE, registrarMovimientoPTONE, comprometerStock, createCompromiso, getBodegaData, registrarMovimientoAlmacen, sacarDelInventario, trasladarPorCantidadAtomic, seleccionarYTrasladarParaProyecto, getItemOverviewEnriquecido, getItemOverviewByBodega, listarItemsEnInventario, listarItemsEnInventarioOptimizado, updateCompromisoEntregado } = require('./services/inventarioServices');
 const { default: axios } = require('axios');
 
 // Buscamos materia prima por Query - Inventario
@@ -380,7 +380,7 @@ const getAllInventarioIdProducto = async(req, res) => {
     }
 } 
 
-
+// Obtener movimientos de materia prima data
 const getMovimientosMateriaBodega = async(req, res) => {
     try{
         const { itemId, ubicacionId } = req.params;
@@ -463,6 +463,47 @@ const getMovimientosItemProyectos = async (req, res) => {
     res.status(500).json({ msg: "Ha ocurrido un error en la principal" });
   }
 };
+
+// Obtener movimientos producto terminado por bodega
+const getMovimientosProductosBodega = async(req, res) => {
+    try{
+        const { itemId, ubicacionId } = req.params;
+        if(!itemId || !ubicacionId) return res.status(200).json({msg: 'Parámetros no validos'});
+        // Caso contrario, avanzamos
+        
+        const searchItem = await inventario.findOne({
+            where: {
+                productoId: itemId,
+                ubicacionId: ubicacionId
+            },
+            include:[{
+                model: ubicacion,
+                include:[
+                    {
+                        model: movimientoInventario, as: 'origen',
+                        where: {
+                            productoId: itemId
+                        },
+                        required: false
+                    },
+                    {
+                        model: movimientoInventario, as: 'destino',
+                        where: {
+                            productoId: itemId
+                        },
+                        required: false
+                    }
+                ]
+            }] 
+        })
+        if(!searchItem) return res.status(404).json({msg: 'No hemos encontrado esto.'});
+        res.status(200).json(searchItem);
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
 
 // Agregar todo los productos comercializables a bodega de productos
 const addPTToBodega = async (req, res) => {
@@ -549,19 +590,207 @@ const newBodega = async (req, res) => {
     }
 }
 
+
 const registrarMovimientos = async (req, res) => {
-    try{
-        // Recibimos datos por body
-        const { materiaId, productoId, cantidad, tipoProducto, tipo, ubicacionOrigenId, ubicacionDestinoId, refDoc, cotizacionId } = req.body;
-        if(!cantidad || !tipoProducto || !tipo  || !refDoc) return res.status(400).json({msg: 'Los parámetros no son validos'});
-        // Caso contrario, avanzamos
-        const add = await registrarMovimiento(req.body);
-        res.status(201).json(add);
-    }catch(err){
-        console.log(err);
-        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+  try {
+    const {
+      materiaId,
+      productoId,
+      cantidad,
+      tipoProducto,
+      tipo,
+      ubicacionOrigenId,
+      ubicacionDestinoId,
+      refDoc,
+      cotizacionId,
+      itemFisicoId,
+      numPiezas,
+      comprasCotizacionId,
+      modoSeleccion // nuevo: 'PIEZAS_COMPLETAS' o null/otro
+    } = req.body;
+
+    // Validaciones básicas
+    if (!tipoProducto || !tipo || !refDoc) {
+      return res.status(400).json({ msg: 'Parámetros no válidos: tipoProducto, tipo y refDoc son requeridos.' });
     }
-}  
+
+    // ENTRADA: delegar a tu flujo actual (creación de items desde numPiezas)
+    if (tipo === 'ENTRADA') {
+      const resultado = await registrarMovimientoAlmacen(req.body);
+      return res.status(201).json(resultado);
+    }
+
+    // SALIDA
+    if (tipo === 'SALIDA') {
+      // Si el cliente indica un itemFisicoId usamos el flujo directo existente
+      if (itemFisicoId) {
+        const resultado = await registrarMovimientoAlmacen(req.body);
+        return res.status(201).json(resultado);
+      }
+
+      // SALIDA por cantidad. Requerimos ubicación y cantidad y al menos materiumId o productoId
+      if ((!materiaId && !productoId) || !cantidad || !ubicacionOrigenId) {
+        return res.status(400).json({ msg: 'Para SALIDA por cantidad necesita materiaId o productoId, cantidad y ubicacionOrigenId.' });
+      }
+
+      // Si piden piezas completas, usamos la función especializada
+      if (modoSeleccion === 'PIEZAS_COMPLETAS') {
+        const resultado = await seleccionarYTrasladarParaProyecto({
+          materiumId: materiaId || null,
+          productoId: productoId || null,
+          cantidadNecesaria: cantidad,
+          ubicacionOrigenId,
+          ubicacionDestinoId: null, // SALIDA simple no crea destino; si quieres que cree, pasa la ubicacionDestinoId
+          refDoc,
+          preferWhole: true,
+          minUsableRemnant: 0.5, // puedes parametrizar según materia
+          applyChanges: true,    // aplica los cambios (actualiza DB y crea movimientos)
+          idsAdicionales: {
+            cotizacionId: cotizacionId || null,
+            comprasCotizacionId: comprasCotizacionId || null,
+            usuarioId: req.user ? req.user.id : null
+          }
+        });
+        return res.status(201).json(resultado);
+      }
+
+      // Default: comportamiento normal de sacar por cantidad
+      const resultado = await sacarDelInventario({
+        materiumId: materiaId || null,
+        productoId: productoId || null,
+        cantidadSolicitada: cantidad,
+        ubicacionOrigenId,
+        refDoc,
+        cotizacionId,
+        usuarioId: req.user ? req.user.id : null,
+        ordenarPor: 'DESC'
+      });
+      return res.status(201).json(resultado);
+    }
+
+    // TRANSFERENCIA
+    if (tipo === 'TRANSFERENCIA') {
+      // Si viene itemFisicoId -> usar tu flujo actual (transferencia de pieza concreta)
+      if (itemFisicoId) {
+        const resultado = await registrarMovimientoAlmacen(req.body);
+        return res.status(201).json(resultado);
+      }
+
+      // TRANSFERENCIA por cantidad: requerimos origen y destino y cantidad
+      if ((!materiaId && !productoId) || !cantidad || !ubicacionOrigenId || !ubicacionDestinoId) {
+        return res.status(400).json({ msg: 'Para TRANSFERENCIA por cantidad necesita materiaId o productoId, cantidad, ubicacionOrigenId y ubicacionDestinoId.' });
+      }
+
+      // Si piden piezas completas, usamos la función de selección pero con destino
+      if (modoSeleccion === 'PIEZAS_COMPLETAS') {
+        const resultado = await seleccionarYTrasladarParaProyecto({
+          materiumId: materiaId || null,
+          productoId: productoId || null,
+          cantidadNecesaria: cantidad,
+          ubicacionOrigenId,
+          ubicacionDestinoId, // aquí sí creará items en destino
+          refDoc,
+          preferWhole: true,
+          minUsableRemnant: 0.5,
+          applyChanges: true, // aplica y crea items destino + movimientos
+          idsAdicionales: {
+            cotizacionId: cotizacionId || null,
+            comprasCotizacionId: comprasCotizacionId || null,
+            usuarioId: req.user ? req.user.id : null
+          }
+        });
+
+        const update = await updateCompromisoEntregado({
+            materiumId: materiaId || null, 
+            cotizacionId: cotizacionId || null, 
+            cantidad, 
+            productoId: productoId || null
+        }) 
+        return res.status(201).json(resultado);
+      }
+
+      // Default: traslado atómico estándar (consume + crea items destino + movimientos)
+      const resultado = await trasladarPorCantidadAtomic({
+        materiumId: materiaId || null,
+        productoId: productoId || null,
+        cantidadSolicitada: cantidad,
+        ubicacionOrigenId,
+        ubicacionDestinoId,
+        refDoc,
+        cotizacionId,
+        comprasCotizacionId,
+        usuarioId: req.user ? req.user.id : null,
+        ordenarPor: 'DESC'
+      });
+      return res.status(201).json(resultado);
+    }
+
+    // No coincide con ningún tipo
+    return res.status(400).json({ msg: 'Tipo de movimiento no soportado por este endpoint.' });
+
+  } catch (err) {
+    console.error('Error en registrarMovimientos controller:', err);
+    return res.status(500).json({ msg: 'Ha ocurrido un error en registrarMovimientos', error: err.message });
+  }
+};
+
+const getItemOverviewByBodegaController = async (req, res) => {
+  try {
+    const { materiumId, productoId, ubicacionId, limit } = req.query;
+    if ((!materiumId && !productoId) || !ubicacionId) {
+      return res.status(400).json({ msg: 'Enviar materiumId o productoId y ubicacionId' });
+    }
+
+    const overview = await getItemOverviewByBodega({
+      materiumId: materiumId ? Number(materiumId) : null,
+      productoId: productoId ? Number(productoId) : null,
+      ubicacionId: Number(ubicacionId),
+      limitSample: limit ? Number(limit) : 100
+    });
+
+    return res.status(200).json(overview);
+  } catch (err) {
+    console.error('getItemOverviewByBodegaController error:', err);
+    return res.status(500).json({ msg: 'Error', error: err.message });
+  }
+};
+
+// OBTENER TODO DE UNA BODEGA
+// controllers/inventarioController.js
+
+const listarItemsController = async (req, res) => {
+  try {
+    const {
+      ubicacionId,
+      tipo,       // 'MP' | 'PR' | undefined
+      page = 1,
+      limit = 50,
+      orderBy,    // 'totalMeters'|'records'|'fullPiecesMeters'|'remnantMeters'
+      orderDir    // 'ASC'|'DESC'
+    } = req.query;
+
+    // Validaciones básicas
+    const pageNum = Number(page) || 1;
+    const limitNum = Math.min(Math.max(Number(limit) || 50, 1), 1000); // limit razonable
+    const orderDirection = (orderDir || 'DESC').toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+    const payload = {
+      ubicacionId: ubicacionId ? Number(ubicacionId) : null,
+      tipo: tipo ? String(tipo).toUpperCase() : null,
+      page: pageNum,
+      limit: limitNum,
+      orderBy: orderBy || 'totalMeters',
+      orderDir: orderDirection
+    };
+
+    const result = await listarItemsEnInventarioOptimizado(payload);
+    return res.status(200).json(result);
+  } catch (err) {
+    console.error('listarItemsController error:', err);
+    return res.status(500).json({ success: false, msg: 'Error al listar items de inventario', error: err.message });
+  }
+};
+
 
 const registrarMovimientosMultiples = async (req, res) => {
     try{
@@ -575,7 +804,9 @@ const registrarMovimientosMultiples = async (req, res) => {
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
     }
-}   
+}  
+
+
 // obtenemos cotizaciones con compromisos para almacén
 const getCotizacionConCompromisos = async (req, res) => {
     try{
@@ -643,20 +874,20 @@ const nuevoCompromiso = async (req, res) => {
             getData.cantidades.forEach(many => {
                 let unidad = many.unidad;
                 let consumo = Number(many.cantidad);
-
+                console.log('Consumo:', consumo, 'Unidad:', unidad);
                 let original = 0;
                 if (unidad !== 'mt2') {
                     original = Number(many.medidaOriginal);
                 }
-
+ 
                 let productoLados = 0;
                 if (unidad === 'mt2') {
                     const [ladoA, ladoB] = many.medidaOriginal.split('X').map(Number);
                     if (!isNaN(ladoA) && !isNaN(ladoB)) {
                         productoLados = ladoA * ladoB;
                     }
-                }
-
+                } 
+ 
                 let comprometer = 1;
                 if ((unidad === 'kg' || unidad === 'mt' || unidad === 'unidad') && original > 0) {
                     comprometer = consumo / original;
@@ -666,7 +897,7 @@ const nuevoCompromiso = async (req, res) => {
 
                 compromisoArray.push({
                     unidad,
-                    cantidadComprometida: Math.ceil(comprometer),
+                    cantidadComprometida: comprometer,
                     cantidadEntregada: 0,
                     estado: 'pendiente',
                     materiaId: many.id,
@@ -676,13 +907,13 @@ const nuevoCompromiso = async (req, res) => {
                 });
             });
         }
-
+ 
         // Productos 
         if (getData.resumenProductos) {
             getData.resumenProductos.forEach(prod => {
                 compromisoArray.push({
                     unidad: prod.unidad,
-                    cantidadComprometida: Math.ceil(prod.cantidad),
+                    cantidadComprometida: prod.cantidad,
                     cantidadEntregada: 0,
                     estado: 'pendiente',
                     productoId: prod.id, // 👈 identificador de producto
@@ -727,8 +958,13 @@ module.exports = {
     getAllInventarioIdProducto, // Obtener registor de una producto inventario - Bodega 2
     getMovimientosMateriaBodega, // OBtener movimientos de item en una bodega
     getMovimientosItemProyectos, // Obtenemos los movimientos de un ITEM por proyecto
+    getMovimientosProductosBodega, // Obtenemos movimientos de producto terminado en una bodega
 
     // Vemos proyectos
     getCotizacionConCompromisos, // Ver todos los proyectos - en almacén
     getOneCotizacionConCompromisos, // Ver un proyecto - En almacén por params.    
-} 
+
+    // VER ITEM
+    getItemOverviewByBodegaController, // Ver item almacen
+    listarItemsController, // VER TODO DE ALMACÉN
+}  

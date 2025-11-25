@@ -7,6 +7,7 @@ const { default: axios } = require('axios');
 const { nuevaCompra, addItemToCotizacion, updateItems } = require('./services/requsicionService');
 const dayjs = require('dayjs');
 const { render } = require('ejs');
+const { createCompromiso } = require('./services/inventarioServices');
 
 // Obtener todas las requisiciones
 const getAllRequisiciones = async (req, res) => {
@@ -677,7 +678,7 @@ const addAllItems = async (req, res) => {
         if (!getData) return res.status(404).json({ msg: 'nada' });
         // Crear items materia Prima
         await Promise.all(
-            getData.cantidades.map(val => {
+            getData.cantidades.map(async val => {
                 let unidad = val.unidad;
                 let consumo = Number(val.cantidad);
 
@@ -708,13 +709,14 @@ const addAllItems = async (req, res) => {
                     materiaId: val.id,
                     cantidad: comprometer
                 };
-                return axios.post(`https://unionapi-production.up.railway.app/api/requisicion/post/addMateria/req`, body)
+                let b = await createCompromiso(val.id, comprometer, getData.requisicion.cotizacionId); // Llamada para crear compromiso
+                return await axios.post(`https://unionapi-production.up.railway.app/api/requisicion/post/addMateria/req`, body)
             })
         );
 
         // Crear items Productos
         await Promise.all(
-            getData.resumenProductos.map(val => {
+            getData.resumenProductos.map(async val => {
                 let unidad = val.unidad;
                 let consumo = Number(val.cantidad);
 
@@ -723,7 +725,9 @@ const addAllItems = async (req, res) => {
                     productoId: val.id,
                     cantidad: consumo
                 };
-                return axios.post(`https://unionapi-production.up.railway.app/api/requisicion/post/addItem/req`, body)
+
+                let a = await createCompromiso(null, comprometer, getData.requisicion.cotizacionId, val.id); // Llamada para crear compromiso
+                return await axios.post(`https://unionapi-production.up.railway.app/api/requisicion/post/addItem/req`, body)
             })
         );
         res.status(201).json({ msg: 'Éxito' });

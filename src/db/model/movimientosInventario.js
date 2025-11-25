@@ -4,7 +4,7 @@ module.exports = sequelize => {
     sequelize.define('movimientoInventario', { 
         // Nombre
         cantidad: {
-            type: DataTypes.STRING 
+            type: DataTypes.DECIMAL(10, 4) 
         },
         // TipoMaterial // Materia Prima o Producto comercializable. Para filtrar mejor.
         tipoProducto: {
@@ -23,4 +23,4 @@ module.exports = sequelize => {
             type: DataTypes.TEXT
         }
     }) 
-}   
+}    

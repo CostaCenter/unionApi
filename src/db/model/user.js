@@ -44,7 +44,9 @@ module.exports = sequelize => {
         // Rango dentro del área
         rango: {
             type: DataTypes.STRING
+        },
+        crm: {
+            type: DataTypes.INTEGER
         }
-
     }) 
 }
