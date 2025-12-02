@@ -1,5 +1,5 @@
 const express = require('express');
-const { newBodega, registrarMovimientos, nuevoCompromiso, addMtToBodega, addPTToBodega, getInvetarioMateriaPrima, getBodegas, getBodegaItems, getMovimientosBodega, searchMPForInventario, getAllInventarioId, getMovimientosMateriaBodega, getMovimientosItemProyectos, getCotizacionConCompromisos, getOneCotizacionConCompromisos, searchPTForInventario, getAllInventarioIdProducto, getMovimientosProductosBodega, getItemOverviewByBodegaController, listarItemsController } = require('../controllers/almacen');
+const { newBodega, registrarMovimientos, nuevoCompromiso, addMtToBodega, addPTToBodega, getInvetarioMateriaPrima, getBodegas, getBodegaItems, getMovimientosBodega, searchMPForInventario, getAllInventarioId, getMovimientosMateriaBodega, getMovimientosItemProyectos, getCotizacionConCompromisos, getOneCotizacionConCompromisos, searchPTForInventario, getAllInventarioIdProducto, getMovimientosProductosBodega, getItemOverviewByBodegaController, listarItemsController, getItemsConMenosStockController, getItemsConMasMovimientoController, getItemsConCompromisoNegativoController, sacaKitBodegaEnProceso } = require('../controllers/almacen');
 const { getAllCotizacionsComprasAlmacen, getOrdenDeCompraAlmacen } = require('../controllers/requisicionController');
 const { registrarMovimientoAlmacen } = require('../controllers/services/inventarioServices');
 const router = express.Router();
@@ -73,10 +73,25 @@ router.route('/get/almacen/proyecto/one/:cotizacionId')
     .get(getOneCotizacionConCompromisos)
 
 // VER ITEM EN BODEGA
-router.route('/get/plus/item/')
+router.route('/get/plus/item/') 
     .get(getItemOverviewByBodegaController)
+     
+router.route('/remove/kit/materiaBodega/')
+    .get(sacaKitBodegaEnProceso)
     
 // VER ITEMS EN BODEGA
 router.route('/get/plus/bodegas')
     .get(listarItemsController);
+
+router.route('/ask/get/lessInventary')
+    .get(getItemsConMenosStockController)
+
+router.route('/ask/get/moreMovimients')
+    .get(getItemsConMasMovimientoController)
+
+router.route('/ask/get/moreNegative')
+    .get(getItemsConCompromisoNegativoController)
+
+
 module.exports = router; 
+  

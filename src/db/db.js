@@ -55,6 +55,7 @@ const modelItemToProject = require('./model/itemForCompras'); // Item que da can
 
 const modelRequisicion = require('./model/requisicion');
 const modelItemRequisicion = require('./model/itemRequisicion');
+const modelNecesitaProyecto = require('./model/productosNecesidad'); // NECESIDAD DEL PROYECTO - KIT O PRODUCTO TERMINADO
 const modelLogs = require('./model/logs');
 const modelPorcentajes = require('./model/porcentajes');
 
@@ -146,7 +147,7 @@ modelItemToProject(sequelize);
 
 modelRequisicion(sequelize); 
 modelItemRequisicion(sequelize);
-
+modelNecesitaProyecto(sequelize);
 
 modelLogs(sequelize);
 modelPorcentajes(sequelize);
@@ -165,7 +166,7 @@ const { user, proveedor, linea, categoria, materia, producto, extension, price, 
   permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion,
   ubicacion, movimientoInventario,
   inventarioItemFisico, inventario, cotizacion_compromiso, comprar_grupo, 
-  comprasCotizacion, ComprasCotizacionProyecto, comprasCotizacionItem, itemToProject
+  comprasCotizacion, ComprasCotizacionProyecto, comprasCotizacionItem, itemToProject, necesidadProyecto
 } = sequelize.models; 
 
 
@@ -250,6 +251,23 @@ requisicion.hasMany(itemToProject, {
 })
 itemToProject.belongsTo(requisicion)
 
+// KITS Y PRODUCTOS RELACIONADOS A LA NECESIDAD
+requisicion.hasMany(necesidadProyecto, {
+  foreignKey: 'requisicionId'
+})
+necesidadProyecto.belongsTo(requisicion)
+
+
+kit.hasMany(necesidadProyecto, {
+  foreignKey: 'kitId'
+})
+necesidadProyecto.belongsTo(kit)
+
+producto.hasMany(necesidadProyecto, {
+  foreignKey: 'productoId'
+}) 
+
+necesidadProyecto.belongsTo(producto)
 
 
 // Relación de cotización y proveedor

@@ -1,5 +1,5 @@
 const express = require('express');
-const { getAllRequisiciones, getRequisicion, getMultipleReq, changeStateOfReq, addProductToReq, addAllItems, addMateriaReq, realRequisicion, getRealProyectosRequisicion, getMateriaByComprar, getProveedoresComunes, newCotizacionProvider, addItemToCotizacionProvider, addSomeMuchCotizacionsProvider, getAllCotizacionsCompras, getCotizacionCompras, changeToCompras, changeToComprasToComprado, getAllOrdenesCompras, getOrdenDeCompra, changeItemCotizacionCompras, getProductosByComprar, getProveedoresComunesPT, addItemToCotizacionController, getProveedoresStats, addItemsToCotizacion, deleteItemOnCotizacion, getProveedoresStatsProductos, getDataProject, updateItemCompra, addItemToOrdenDeCompraProvider, getAllOrdenesComprasFiltro, buscarPorQueryMateria, buscarPorQueryRequisicion, buscarPorQueryProveedor, buscarPorQueryOrden, giveNoteToOrden } = require('../controllers/requisicionController');
+const { getAllRequisiciones, getRequisicion, getMultipleReq, changeStateOfReq, addProductToReq, addAllItems, addMateriaReq, realRequisicion, getRealProyectosRequisicion, getMateriaByComprar, getProveedoresComunes, newCotizacionProvider, addItemToCotizacionProvider, addSomeMuchCotizacionsProvider, getAllCotizacionsCompras, getCotizacionCompras, changeToCompras, changeToComprasToComprado, getAllOrdenesCompras, getOrdenDeCompra, changeItemCotizacionCompras, getProductosByComprar, getProveedoresComunesPT, addItemToCotizacionController, getProveedoresStats, addItemsToCotizacion, deleteItemOnCotizacion, getProveedoresStatsProductos, getDataProject, updateItemCompra, addItemToOrdenDeCompraProvider, getAllOrdenesComprasFiltro, buscarPorQueryMateria, buscarPorQueryRequisicion, buscarPorQueryProveedor, buscarPorQueryOrden, giveNoteToOrden, getNecesidadProject, getProjectByProduccion, getKitOProductFromProduction } = require('../controllers/requisicionController');
 const router = express.Router();
 
 
@@ -110,6 +110,15 @@ router.route('/get/get/almacen/itemCotizacion/:itemId')
 router.route('/get/project/get/project/:projectId')
     .get(getDataProject)
 
+// OBTENER Y CREAR LAS NECESIDADES - KIT Y PRODUCTO EN NECESIDADPROYECTOS
+router.route('/add/register/necesidad/:requisicionId')
+    .get(getNecesidadProject)
+
+router.route('/get/produccion/project/:requisicionId')
+    .get(getProjectByProduccion)
+
+router.route('/get/produccion/project/items/watch')
+    .get(getKitOProductFromProduction)
 
 // QUERYS
 router.route('/get/filters/materiaPrima')

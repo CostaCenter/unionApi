@@ -1,10 +1,10 @@
 const express = require('express');
 const { materia, producto, productPrice, productoCotizacion, cotizacion, serviceCotizacion, service, client, user, armado, kitCotizacion, armadoKits, areaCotizacion, armadoCotizacion, proveedor, extension, price, kit, itemKit, linea, categoria, requisicion, itemRequisicion, 
-    comprasCotizacion,  ComprasCotizacionProyecto, comprasCotizacionItem, itemToProject, db, Op} = require('../db/db');
+    comprasCotizacion,  ComprasCotizacionProyecto, comprasCotizacionItem, cotizacion_compromiso, itemToProject, necesidadProyecto, priceKit, db, Op} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 const { default: axios } = require('axios');
-const { nuevaCompra, addItemToCotizacion, updateItems } = require('./services/requsicionService');
+const { nuevaCompra, addItemToCotizacion, updateItems, giveNecesidadToProject } = require('./services/requsicionService');
 const dayjs = require('dayjs');
 const { render } = require('ejs');
 const { createCompromiso } = require('./services/inventarioServices');
@@ -663,7 +663,167 @@ const updateItemCompra = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
+// VER KIT O PRODUCTO NECESITADO EN PRODUCCIÓN
+const getKitOProductFromProduction = async (req, res) => {
+    try{
+        // Recibimos datos por params
+        const { requisicionId, kitId, productId } = req.query;
+        if(!requisicionId) return res.status(400).json({msg: 'Parámetro no valido.'});
+        if(!kitId && !productId) return res.status(400).json({msg: 'Parámetro no valido.'});
+        // Caso contrario, avanzamos
 
+        if(kitId){
+            const searchItem = await necesidadProyecto.findOne({
+                where: {
+                    kitId,
+                    requisicionId
+                },
+                include:[{
+                    model: kit,
+                    include:[{
+                        model: extension
+                    }]
+                }]
+            })
+
+            if(!searchItem) return res.status(404).json({msg: 'No hemos encontrado esto'})
+            // Caso contrario
+            res.status(200).json(searchItem)
+        }else{
+            const searchItem = await necesidadProyecto.findOne({
+                where: {
+                    productoId: productId,
+                    requisicionId
+                },
+                include:[{
+                    model: producto
+                }]
+            })
+
+            if(!searchItem) return res.status(404).json({msg: 'No hemos encontrado esto'})
+            // Caso contrario
+            res.status(200).json(searchItem)
+        }
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+// Obtenemos proyecto en producción
+const getProjectByProduccion = async(req, res) => {
+    try{
+        // Recibimos datos por params
+        const { requisicionId } = req.params;
+        if(!requisicionId) return res.status(400).json({msg: 'Parámetro no es valido'});
+        // Caso contrario, avanzamos
+        
+        const searchProject = await requisicion.findByPk(requisicionId, {
+            include:[{
+                model: necesidadProyecto,
+                include:[{
+                    model: kit,
+                    include:[{ 
+                        model: priceKit,
+                        where: {
+                            state: 'active'
+                        }
+                    }, {
+                        model: extension
+                    }]
+                }, {
+                    model: producto,
+                    include:[{
+                        model: productPrice,
+                        where: {
+                            state: 'active'
+                        }
+                    }]
+                }]
+            }, { 
+                model: cotizacion,
+                include:[{
+                    model: cotizacion_compromiso,
+                    include:[{
+                        model: materia
+                    }, {model: producto}],
+                    required: true,
+                },{
+                    model: client
+                },{
+                    model: requisicion,
+                    as: 'requisiciones',
+                    include:[{
+                        model: comprasCotizacionItem,
+                        include:[{ 
+                            model: materia,
+                        }, {model: producto}]
+                    }]
+                }]
+            }]
+        })
+
+
+        // const searchOrden = await comprasCotizacion.findByPk(ordenId,{
+        //     where: {
+        //         estadoPago: 'comprado'
+        //     },
+        //     include:[{
+        //         model:proveedor
+        //     },{
+        //         model: comprasCotizacionItem,
+        //         include:[{
+        //             model: requisicion
+        //         }, {
+        //             model: materia
+        //         }, {
+        //             model: producto
+        //         }]
+        //     },{
+        //         model: requisicion,
+        //         as: 'requisiciones',
+        //         through: { attributes: [] }
+        //     } ]
+        // });
+        if(!searchProject) return res.status(404).json({msg: 'No hemos encontrado esto'});
+
+        // Caso contrario, avanzamos
+        res.status(200).json(searchProject)
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'})
+    }
+}
+
+const getNecesidadProject = async(req, res) => {
+    try{
+        // Recibimos datos por parmas
+        const { requisicionId } = req.params;
+        // Si no existe, returnamos null
+        if(!requisicionId) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        // Caso contrario, avanzamos
+
+        const getData = await axios.get(`https://unionapi-production.up.railway.app/api/requisicion/get/${requisicionId}`)
+        .then((res) => {
+            console.log(res.data);
+            return res;
+        })
+        .then(res => res.data);
+
+        getData.resumenKits.map(async (r) => {
+            const asignarResumen = await giveNecesidadToProject(r.id, null, r.cantidad, requisicionId)
+        })
+
+        getData.resumenProductos.map(async (r) => {
+            const asignarResumen = await giveNecesidadToProject(null, r.id,  r.cantidad, requisicionId)
+        })
+
+
+        return res.status(201).json({msg: 'Exito!'})
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
 const addAllItems = async (req, res) => {
     try {
         const { requisicionId } = req.params;
@@ -1062,8 +1222,8 @@ const changeToComprasToComprado = async (req, res) => {
         if(!searchData) return res.status(404).json({msg: 'No hemos encotrado esto.'});
         // Caso contrario, actualizamos 
         const updateData = await comprasCotizacion.update({
-            estadoPago: 'pendiente',
-            daysFinish: hoy.format('YYY-MM-DD')
+            estadoPago: 'comprado',
+            daysFinish: hoy.format('YYYY-MM-DD')
         }, {
             where: {
                 id: comprasCotizacionId
@@ -1988,7 +2148,7 @@ const changeItemCotizacionCompras = async (req, res) => {
 
         if(!searchItem) return res.status(404).json({msg: 'No encontrado'})
         searchItem.estado = 'Entregado';
-        searchItem.save()
+        await searchItem.save();
 
         const searchOtherItems = await comprasCotizacionItem.findAll({
             where: {
@@ -1997,9 +2157,10 @@ const changeItemCotizacionCompras = async (req, res) => {
             }
         }) ;
 
-        if(!searchOtherItems){
-            const updateReq = await comprasCotizacion.update({
-                estado: 'entregado'
+        if(searchOtherItems.length === 0){
+            console.log('No encuentra');
+            await comprasCotizacion.update({
+                estadoPago: 'entregado'
             },{                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     
                 where: {
                     id: searchItem.comprasCotizacionId
@@ -2008,6 +2169,7 @@ const changeItemCotizacionCompras = async (req, res) => {
             return res.status(200).json({msg: 'Exito'})
 
         }else{
+            console.log('si encuentra', searchOtherItems)
             return res.status(200).json({msg: 'Exito'})
         }
     }catch(err){
@@ -2027,6 +2189,25 @@ const getDataProject = async (req, res) => {
         const searchReq = await requisicion.findByPk(projectId, 
             {
                 include: [{
+                    model: necesidadProyecto,
+                    include:[{
+                        model: kit,
+                        include:[{
+                            model: priceKit,
+                            where: {
+                                state: 'active'
+                            }
+                        },]
+                    }, {
+                        model: producto,
+                        include:[{
+                            model: productPrice,
+                            where: {
+                                state: 'active'
+                            }
+                        }]
+                    }]
+                }, {
                     model: cotizacion,
                     include:[{
                         model: areaCotizacion,
@@ -2190,4 +2371,10 @@ module.exports = {
     buscarPorQueryRequisicion, // Buscamos requisicion por query
     buscarPorQueryProveedor, // Buscamos proveedor por query
     buscarPorQueryOrden, // Buscamos orden por query
+
+    // Obtener productos y kits para compromisos need Project
+    getNecesidadProject,
+    getProjectByProduccion, // Obtenemos requisicion para producción
+    getKitOProductFromProduction, // Obtenemos kit o producto necesitado en producción por requisición
+
 }

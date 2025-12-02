@@ -1,7 +1,341 @@
-const { ubicacion, materia, producto, inventario, movimientoInventario,  inventarioItemFisico, cotizacion_compromiso, db } = require('../../db/db');
-const { Op  } = require('sequelize');
+const { ubicacion, materia, kit, producto, inventario, movimientoInventario,  inventarioItemFisico, cotizacion_compromiso, db } = require('../../db/db');
+const { Op, QueryTypes  } = require('sequelize');
 
 const sequelize = db
+
+
+// VER MENOS STOCK
+async function getItemsConMenosStock({ tipo = 'MP', ubicacionId = null, limit = 20 } = {}) {
+  if (!tipo || !['MP','PR'].includes(String(tipo).toUpperCase())) {
+    throw new Error("El parámetro 'tipo' es requerido y debe ser 'MP' o 'PR'.");
+  }
+  const t = String(tipo).toUpperCase();
+  const lim = Math.max(1, Math.min(1000, Number(limit) || 20));
+  const ubFilter = (ubicacionId == null || ubicacionId === '') ? null : Number(ubicacionId);
+
+  // subconsulta agregada: sum(cantidadDisponible) por item (solo registros con cantidad > 0)
+  // si se pasa ubicacionId, filtramos por esa bodega
+  const whereUb = ubFilter ? `WHERE "ubicacionId" = ${ubFilter} AND "cantidadDisponible" > 0` : `WHERE "cantidadDisponible" > 0`;
+
+  // Query separado por tipo: left join maestros <- agregados inventario
+  if (t === 'MP') {
+    const sql = `
+      SELECT
+        m.id AS "itemId",
+        m.item AS "itemName",
+        m.description AS "description",
+        m.medida AS "medida",
+        m.unidad AS "unidad",
+        COALESCE(ai.records, 0)::int AS "records",
+        COALESCE(ai.totalMeters, 0)::numeric AS "totalMeters",
+        COALESCE(ai.fullPiecesCount, 0)::int AS "fullPiecesCount",
+        COALESCE(ai.remnantCount, 0)::int AS "remnantCount",
+        COALESCE(ai.fullPiecesMeters, 0)::numeric AS "fullPiecesMeters",
+        COALESCE(ai.remnantMeters, 0)::numeric AS "remnantMeters"
+      FROM "materia" m
+      LEFT JOIN (
+        SELECT
+          "materiumId" AS itemId,
+          COUNT(id) FILTER (WHERE "cantidadDisponible" > 0) AS records,
+          SUM("cantidadDisponible") FILTER (WHERE "cantidadDisponible" > 0) AS totalMeters,
+          SUM(CASE WHEN "esRemanente" = false AND "cantidadDisponible" > 0 THEN 1 ELSE 0 END) AS fullPiecesCount,
+          SUM(CASE WHEN "esRemanente" = true AND "cantidadDisponible" > 0 THEN 1 ELSE 0 END) AS remnantCount,
+          SUM(CASE WHEN "esRemanente" = false AND "cantidadDisponible" > 0 THEN "cantidadDisponible" ELSE 0 END) AS fullPiecesMeters,
+          SUM(CASE WHEN "esRemanente" = true AND "cantidadDisponible" > 0 THEN "cantidadDisponible" ELSE 0 END) AS remnantMeters
+        FROM "inventarioItemFisicos"
+        ${whereUb}
+        GROUP BY "materiumId"
+      ) ai ON ai.itemId = m.id
+      ORDER BY COALESCE(ai.totalMeters, 0) ASC, COALESCE(ai.records, 0) ASC
+      LIMIT ${lim};
+    `;
+
+    const rows = await sequelize.query(sql, { type: QueryTypes.SELECT });
+    return { success: true, tipo: 'MP', ubicacionId: ubFilter, limit: lim, items: rows };
+  } else {
+    // PR
+    const sql = `
+      SELECT
+        p.id AS "itemId",
+        p.nombre AS "itemName",
+        p.sku AS "sku",
+        p.medida AS "medida",
+        p.unidad AS "unidad",
+        COALESCE(ai.records, 0)::int AS "records",
+        COALESCE(ai.totalMeters, 0)::numeric AS "totalMeters",
+        COALESCE(ai.fullPiecesCount, 0)::int AS "fullPiecesCount",
+        COALESCE(ai.remnantCount, 0)::int AS "remnantCount",
+        COALESCE(ai.fullPiecesMeters, 0)::numeric AS "fullPiecesMeters",
+        COALESCE(ai.remnantMeters, 0)::numeric AS "remnantMeters"
+      FROM "producto" p
+      LEFT JOIN (
+        SELECT
+          "productoId" AS itemId,
+          COUNT(id) FILTER (WHERE "cantidadDisponible" > 0) AS records,
+          SUM("cantidadDisponible") FILTER (WHERE "cantidadDisponible" > 0) AS totalMeters,
+          SUM(CASE WHEN "esRemanente" = false AND "cantidadDisponible" > 0 THEN 1 ELSE 0 END) AS fullPiecesCount,
+          SUM(CASE WHEN "esRemanente" = true AND "cantidadDisponible" > 0 THEN 1 ELSE 0 END) AS remnantCount,
+          SUM(CASE WHEN "esRemanente" = false AND "cantidadDisponible" > 0 THEN "cantidadDisponible" ELSE 0 END) AS fullPiecesMeters,
+          SUM(CASE WHEN "esRemanente" = true AND "cantidadDisponible" > 0 THEN "cantidadDisponible" ELSE 0 END) AS remnantMeters
+        FROM "inventarioItemFisicos"
+        ${whereUb}
+        GROUP BY "productoId"
+      ) ai ON ai.itemId = p.id
+      ORDER BY COALESCE(ai.totalMeters, 0) ASC, COALESCE(ai.records, 0) ASC
+      LIMIT ${lim};
+    `;
+
+    const rows = await sequelize.query(sql, { type: QueryTypes.SELECT });
+    return { success: true, tipo: 'PR', ubicacionId: ubFilter, limit: lim, items: rows };
+  }
+}
+
+// Obtener item con más movimientos...
+// Obtener item con más movimientos (adaptada a tu estructura: usa movimientoInventario.sequelize)
+async function getItemsConMasMovimiento({
+  tipo = 'MP',
+  ubicacionId = null,
+  dateFrom = null,
+  dateTo = null,
+  movementTypes = null,
+  limit = 20,
+  orderBy = 'qty' // 'qty' or 'count'
+} = {}) {
+  if (!tipo || !['MP','PR'].includes(String(tipo).toUpperCase())) {
+    throw new Error("El parámetro 'tipo' es requerido y debe ser 'MP' o 'PR'.");
+  }
+  const t = String(tipo).toUpperCase();
+  const lim = Math.max(1, Math.min(1000, Number(limit) || 20));
+
+  // Obtener la instancia de sequelize desde el modelo movimientoInventario
+  const sequelizeInst = movimientoInventario && (movimientoInventario.sequelize || movimientoInventario._sequelize);
+  if (!sequelizeInst) throw new Error('No se pudo localizar la instancia de Sequelize desde movimientoInventario.');
+
+  // Construir cláusulas WHERE dinámicas en array (seguro)
+  const whereClauses = [];
+  if (ubicacionId !== null && ubicacionId !== undefined) {
+    // consideramos movimientos donde origen O destino corresponde a la bodega
+    whereClauses.push(`( "ubicacionOrigenId" = ${Number(ubicacionId)} OR "ubicacionDestinoId" = ${Number(ubicacionId)} )`);
+  }
+  if (dateFrom) {
+    whereClauses.push(`"createdAt" >= '${String(dateFrom)}'`);
+  }
+  if (dateTo) {
+    whereClauses.push(`"createdAt" <= '${String(dateTo)}'`);
+  }
+  if (movementTypes && Array.isArray(movementTypes) && movementTypes.length) {
+    const safe = movementTypes.map(mt => `'${String(mt)}'`).join(',');
+    whereClauses.push(`"tipoMovimiento" IN (${safe})`);
+  }
+
+  // columna id segun tipo
+  const idCol = (t === 'MP') ? '"materiumId"' : '"productoId"';
+
+  // Construir whereSQL garantizando que siempre se incluya la condición idCol IS NOT NULL sin dejar 'AND' suelto
+  let whereSQL;
+  if (whereClauses.length) {
+    whereSQL = `WHERE ${whereClauses.join(' AND ')} AND ${idCol} IS NOT NULL`;
+  } else {
+    whereSQL = `WHERE ${idCol} IS NOT NULL`;
+  }
+
+  // nombre real de la tabla de movimientos desde el modelo
+  const movimientosTable = (typeof movimientoInventario.getTableName === 'function')
+    ? movimientoInventario.getTableName()
+    : 'movimientoInventarios';
+
+  // Query de agregación
+  const aggSQL = `
+    SELECT
+      ${idCol} AS "itemId",
+      COUNT(*) AS "movCount",
+      COALESCE(SUM(ABS("cantidadAfectada")), 0) AS "movQty"
+    FROM "${movimientosTable}"
+    ${whereSQL}
+    GROUP BY ${idCol}
+    ORDER BY ${ orderBy === 'count' ? '"movCount" DESC' : '"movQty" DESC' }
+    LIMIT ${lim};
+  `;
+
+  // Ejecutar consulta
+  const aggRows = await sequelizeInst.query(aggSQL, { type: QueryTypes.SELECT });
+
+  if (!aggRows || aggRows.length === 0) {
+    return { success: true, tipo: t, ubicacionId, limit: lim, items: [] };
+  }
+
+  // Obtener metadatos en batch
+  const ids = aggRows.map(r => Number(r.itemId));
+  const metaMap = {};
+  if (t === 'MP') {
+    const metas = await materia.findAll({ where: { id: ids }, attributes: ['id','item','description','medida','unidad'], raw: true });
+    for (const m of metas) metaMap[String(m.id)] = m;
+  } else {
+    const metas = await producto.findAll({ where: { id: ids }, attributes: ['id','nombre','sku','medida','unidad'], raw: true });
+    for (const p of metas) metaMap[String(p.id)] = p;
+  }
+
+  // Construir respuesta
+  const items = aggRows.map(r => {
+    const itemId = Number(r.itemId);
+    return {
+      itemId,
+      itemType: t,
+      itemData: metaMap[String(itemId)] || null,
+      movCount: Number(r.movCount || 0),
+      movQty: Number(r.movQty || 0)
+    };
+  });
+
+  return { success: true, tipo: t, ubicacionId, limit: lim, items };
+}
+
+
+// OBTENEMOS UN KIT
+function consolidarKit(kit, cantidadKits = 1) {
+  if (!kit || !Array.isArray(kit.itemKits)) return [];
+
+  const toNumber = v => {
+    if (v === null || v === undefined) return 0;
+    if (typeof v === 'number') return v;
+    return Number(String(v).trim().replace(',', '.')) || 0;
+  };
+
+  const mapa = {};
+
+  for (const ik of kit.itemKits) {
+    const m = ik.materium || {};
+    const materiaId = m.id ?? ik.materiaId;
+    if (materiaId == null) continue;
+
+    const cantidadPorKit = toNumber(ik.cantidad);
+    const totalCantidad = cantidadPorKit * toNumber(cantidadKits);
+
+    // campos solicitados: unidad, medida, item
+    const unidad = m.unidad ?? '';
+    const medida = m.medida ?? ik.medida ?? '';
+    const item = m.description ?? m.description ?? '';
+
+    if (!mapa[materiaId]) {
+      mapa[materiaId] = {
+        materiaId,
+        item,
+        unidad,
+        medida,
+        cantidadPorKit,
+        totalCantidad: 0,
+        detalles: []
+      };
+    }
+
+    // sumar totales (si el mismo materia aparece varias veces)
+    mapa[materiaId].totalCantidad += totalCantidad;
+
+    mapa[materiaId].detalles.push({
+      itemKitId: ik.id,
+      cantidadPorKit,
+      cantidadKits: toNumber(cantidadKits),
+      cantidadTotal: totalCantidad
+    });
+  }
+
+  return Object.values(mapa);
+}
+
+// SACAR ITEMS
+async function sacaMateriasConsolidadoTransactional(consolidado = [], {
+  StockModel,
+  MovimientoModel,
+  sequelize,
+  ubicacionOrigenId = 4,
+  refDoc = 'SALIDA_KIT',
+  usuarioId = null,
+  referenciaTipo = 'kit',
+  referenciaId = null,
+  comprobarBodega = true // si false, buscara cualquier stock disponible (adaptar si quieres)
+} = {}) {
+  if (!Array.isArray(consolidado)) throw new Error('consolidado debe ser un array');
+  if (!StockModel || !MovimientoModel || !sequelize) throw new Error('StockModel, MovimientoModel y sequelize son requeridos');
+
+  // Resultado final
+  const resultados = [];
+
+  // Abrimos transacción
+  return await sequelize.transaction(async (tx) => {
+    // Recorremos cada materia y validamos + descontamos
+    for (const item of consolidado) {
+      const materiaId = Number(item.materiaId);
+      const cantidadSolicitada = Number(item.totalCantidad ?? item.cantidadTotal ?? 0);
+
+      if (!materiaId || cantidadSolicitada <= 0) {
+        throw new Error(`Item inválido: materiaId=${item.materiaId} cantidad=${item.totalCantidad}`);
+      }
+
+      // Buscar stock disponible para esa materia en la bodega (con lock)
+      // Ajusta el where según tu esquema (por ejemplo: materiaId + bodegaId)
+      const where = { materiaId };
+      if (comprobarBodega) where.bodegaId = ubicacionOrigenId;
+
+      // Intentamos obtener la fila de stock con bloqueo FOR UPDATE
+      const stockRow = await StockModel.findOne({
+        where,
+        transaction: tx,
+        lock: tx.LOCK.UPDATE
+      });
+
+      const disponible = stockRow ? Number(stockRow.cantidad || 0) : 0;
+
+      if (disponible < cantidadSolicitada) {
+        // Lanzamos error para que Sequelize haga rollback
+        throw new Error(`Stock insuficiente para materiaId ${materiaId}. Disponible: ${disponible}, requerido: ${cantidadSolicitada}`);
+      }
+
+      // Decrementar stock (usamos update directo por compatibilidad)
+      // Puedes usar StockModel.decrement si prefieres
+      const nuevoStock = disponible - cantidadSolicitada;
+      await StockModel.update(
+        { cantidad: nuevoStock },
+        { where: { id: stockRow.id }, transaction: tx }
+      );
+
+      // Crear movimiento de salida
+      await MovimientoModel.create({
+        materiaId,
+        bodegaId: stockRow.bodegaId ?? ubicacionOrigenId,
+        tipo: 'SALIDA',
+        cantidad: cantidadSolicitada,
+        referenciaTipo,
+        referenciaId,
+        refDoc,
+        usuarioId,
+        fecha: new Date()
+      }, { transaction: tx });
+
+      resultados.push({
+        materiaId,
+        cantidad: cantidadSolicitada,
+        stockAntes: disponible,
+        stockDespues: nuevoStock,
+        ok: true
+      });
+    }
+
+    // Si llegamos aquí, todo correcto -> commit automático al retornar
+    return {
+      ok: true,
+      resultados,
+      summary: {
+        totalItems: resultados.length,
+        ok: resultados.length
+      }
+    };
+  }); // fin transaction
+}
+
+
+// SaCAR DEL INVENTARIO EN KIT
+
+
 
 // Obtener datos de bodegas
 async function getBodegaData(bodega){
@@ -462,6 +796,357 @@ async function crearItemFisico(
 }
 
 
+// SACAR ITEMS - KIT 
+async function sacaMateriasConsolidadoTransactional(consolidado = [], opts = {}) {
+  const {
+    ubicacionOrigenId = 4,
+    refDoc = 'SALIDA_KIT',
+    cotizacionId = null,
+    usuarioId = null,
+    ordenarPor = 'DESC'
+  } = opts || {};
+
+  if (!Array.isArray(consolidado) || consolidado.length === 0) {
+    throw new Error('consolidado debe ser un array no vacío');
+  }
+
+  // Abrimos transacción global
+  return await sequelize.transaction(async (tx) => {
+    const resultados = [];
+
+    for (const item of consolidado) {
+      const materiaId = Number(item.materiaId);
+      const cantidad = Number(item.totalCantidad ?? item.cantidadTotal ?? 0);
+
+      if (!materiaId || cantidad <= 0) {
+        // invalid item -> lanzamos para rollback (puedes cambiar a skip si prefieres)
+        throw new Error(`Item inválido en consolidado: materiaId=${item.materiaId} cantidad=${item.totalCantidad}`);
+      }
+
+      // Llamamos a tu función que soporta transaction, pasándole tx
+      const res = await sacarDelInventarioWithTransaction({
+        materiumId: materiaId,
+        productoId: null,
+        cantidadSolicitada: cantidad,
+        ubicacionOrigenId,
+        refDoc,
+        cotizacionId,
+        usuarioId,
+        ordenarPor,
+        transaction: tx
+      });
+
+      // si la función retornara error en vez de lanzar, podrías verificar res.success
+      resultados.push({
+        materiaId,
+        cantidad,
+        ok: true,
+        detalle: res
+      });
+    }
+
+    // Si llegamos aquí sin excepciones -> commit implícito
+    return { ok: true, resultados, summary: { totalItems: resultados.length } };
+  }); // fin transaction
+}
+
+
+// SACAR DEL INVENTARIO KIT
+// NUEVA FUNCIÓN: copia segura con soporte transaction sin tocar la original
+async function sacarDelInventarioWithTransaction({
+  materiumId = null,
+  productoId = null,
+  cantidadSolicitada,
+  ubicacionOrigenId,
+  refDoc,
+  cotizacionId = null,
+  usuarioId = null,
+  ordenarPor = 'DESC', // 'DESC' = piezas grandes primero, 'ASC' = piezas pequeñas primero
+  // transaction opcional: si se pasa, se usa; si no, la función abre su propia transacción
+  transaction = null
+}) {
+  // mismas validaciones iniciales que la función original
+  if (!materiumId && !productoId) {
+    throw new Error('Debe indicar materiumId (MP) o productoId (Producto).');
+  }
+  if (!ubicacionOrigenId) {
+    throw new Error('Falta ubicacionOrigenId.');
+  }
+  const cantidad = parseFloat(cantidadSolicitada);
+  if (isNaN(cantidad) || cantidad <= 0) {
+    throw new Error('La cantidad a sacar debe ser un número mayor que 0.');
+  }
+
+  const EPS = 0.0001;
+
+  // === DETECCIÓN DINÁMICA: columna válida para cantidad en movimientoInventario ===
+  const qi = sequelize.getQueryInterface();
+  const movimientoTableName = (movimientoInventario.getTableName && movimientoInventario.getTableName()) || movimientoInventario.tableName || 'movimientoInventario';
+  let cantidadColumn = 'cantidadAfectada';
+  try {
+    const desc = await qi.describeTable(movimientoTableName);
+    const posibles = [
+      'cantidadAfectada', 'cantidad', 'cantidad_afectada',
+      'cantidadSalida', 'cantidad_salida', 'qty', 'cantidad_entregada', 'cantidad_salida_total'
+    ];
+    const found = posibles.find(p => Object.prototype.hasOwnProperty.call(desc, p));
+    if (found) cantidadColumn = found;
+  } catch (err) {
+    console.warn('No se pudo describir movimientoInventario table; usando columna por defecto:', err.message);
+  }
+
+  // encapsulamos la lógica en runWithTx para poder reutilizarla con transaction pasada o propia
+  const runWithTx = async (t) => {
+    // ------------------------------------------------
+    // BLOQUE 1: MATERIA PRIMA (si NO viene productoId)
+    // ------------------------------------------------
+    if (!productoId) {
+      const itemsDisponibles = await inventarioItemFisico.findAll({
+        where: {
+          materiumId: materiumId,
+          ubicacionId: ubicacionOrigenId,
+          cantidadDisponible: { [Op.gt]: 0 }
+        },
+        order: [['cantidadDisponible', ordenarPor]],
+        transaction: t,
+        lock: t.LOCK.UPDATE
+      });
+
+      if (!itemsDisponibles || itemsDisponibles.length === 0) {
+        throw new Error('No hay ítems disponibles en la ubicación de origen para esa materia prima.');
+      }
+
+      let medidaCalc = null;
+      try {
+        const mat = await materia.findByPk(materiumId, { attributes: ['medida'], raw: true, transaction: t });
+        if (mat && mat.medida) {
+          medidaCalc = typeof parseMedidaToMeters === 'function' ? parseMedidaToMeters(mat.medida) : null;
+        }
+      } catch (e) {
+        medidaCalc = null;
+      }
+
+      if (medidaCalc !== null && !isNaN(Number(medidaCalc))) {
+        for (const pieza of itemsDisponibles) {
+          const cantActual = (pieza.cantidadDisponible === null || pieza.cantidadDisponible === undefined) ? 0 : Number(pieza.cantidadDisponible);
+          if (isNaN(cantActual) || cantActual <= EPS) {
+            pieza.cantidadDisponible = medidaCalc;
+            if (pieza.longitudInicial === null || pieza.longitudInicial === undefined || Number(pieza.longitudInicial) <= 0) {
+              pieza.longitudInicial = medidaCalc;
+            }
+            await inventarioItemFisico.update(
+              { cantidadDisponible: medidaCalc, longitudInicial: medidaCalc },
+              { where: { id: pieza.id }, transaction: t }
+            );
+          } else {
+            if (pieza.longitudInicial === null || pieza.longitudInicial === undefined || Number(pieza.longitudInicial) <= 0) {
+              pieza.longitudInicial = medidaCalc;
+              await inventarioItemFisico.update(
+                { longitudInicial: medidaCalc },
+                { where: { id: pieza.id }, transaction: t }
+              );
+            }
+          }
+        }
+      }
+
+      const stockTotal = itemsDisponibles.reduce((s, it) => {
+        const v = (it.cantidadDisponible === null || it.cantidadDisponible === undefined) ? 0 : parseFloat(it.cantidadDisponible);
+        return s + (isNaN(v) ? 0 : v);
+      }, 0);
+      if (stockTotal + EPS < cantidad) {
+        throw new Error(`Stock insuficiente. Necesario: ${cantidad}. Disponible: ${stockTotal}.`);
+      }
+
+      let restante = cantidad;
+      const detalles = [];
+
+      for (const pieza of itemsDisponibles) {
+        if (restante <= EPS) break;
+
+        const itemId = pieza.id;
+        const stockActual = parseFloat(pieza.cantidadDisponible);
+        if (isNaN(stockActual) || stockActual <= EPS) continue;
+
+        const aConsumir = Math.min(restante, stockActual);
+        const nuevoStock = +(stockActual - aConsumir);
+
+        let nuevoEstado = 'Cortada';
+        let esRemanente = true;
+        if (nuevoStock <= EPS) {
+          nuevoEstado = 'Agotada';
+          esRemanente = false;
+        } else {
+          nuevoEstado = 'Cortada';
+          esRemanente = true;
+        }
+
+        await pieza.update({
+          cantidadDisponible: nuevoStock,
+          estado: nuevoEstado,
+          esRemanente: esRemanente
+        }, { transaction: t });
+
+        const movData = {
+          materiumId: materiumId,
+          productoId: null,
+          cotizacionId: cotizacionId,
+          tipoProducto: 'MP',
+          tipoMovimiento: 'SALIDA',
+          referenciaDeDocumento: refDoc,
+          ubicacionOrigenId: ubicacionOrigenId,
+          ubicacionDestinoId: null,
+          itemFisicoId: itemId,
+          usuarioId: usuarioId
+        };
+        movData[cantidadColumn] = aConsumir;
+
+        const mov = await movimientoInventario.create(movData, { transaction: t });
+
+        detalles.push({
+          itemId,
+          tipo: 'MP',
+          longitudInicial: pieza.longitudInicial !== undefined ? parseFloat(pieza.longitudInicial) : null,
+          consumo: aConsumir,
+          nuevoStock,
+          movimientoId: mov.id,
+          estado: nuevoEstado,
+          esRemanente
+        });
+
+        restante = +(restante - aConsumir);
+      }
+
+      if (restante > EPS) {
+        throw new Error(`No se pudo consumir la cantidad completa de materia prima. Falta: ${restante}`);
+      }
+
+      return {
+        success: true,
+        tipo: 'MP',
+        id: materiumId,
+        ubicacionOrigenId,
+        cantidadSolicitada: cantidad,
+        totalConsumido: detalles.reduce((s, d) => s + d.consumo, 0),
+        detalles
+      };
+    }
+
+    // ------------------------------------------------
+    // BLOQUE 2: PRODUCTO (si viene productoId)
+    // ------------------------------------------------
+    else {
+      if (!Number.isInteger(cantidad)) {
+        throw new Error('Para productos terminados la cantidad debe ser un número entero (unidades).');
+      }
+
+      const itemsDisponibles = await inventarioItemFisico.findAll({
+        where: {
+          productoId: productoId,
+          ubicacionId: ubicacionOrigenId,
+          cantidadDisponible: { [Op.gt]: 0 }
+        },
+        order: [['cantidadDisponible', ordenarPor]],
+        transaction: t,
+        lock: t.LOCK.UPDATE
+      });
+
+      if (!itemsDisponibles || itemsDisponibles.length === 0) {
+        throw new Error('No hay ítems disponibles en la ubicación de origen para ese producto.');
+      }
+
+      const stockTotal = itemsDisponibles.reduce((s, it) => s + parseFloat(it.cantidadDisponible), 0);
+      if (stockTotal + EPS < cantidad) {
+        throw new Error(`Stock insuficiente. Necesario: ${cantidad}. Disponible: ${stockTotal}.`);
+      }
+
+      let restante = cantidad;
+      const detalles = [];
+
+      for (const pieza of itemsDisponibles) {
+        if (restante <= EPS) break;
+
+        const itemId = pieza.id;
+        const stockActual = parseFloat(pieza.cantidadDisponible);
+        if (stockActual <= EPS) continue;
+
+        const aConsumir = Math.min(restante, stockActual);
+        const nuevoStock = +(stockActual - aConsumir);
+
+        let nuevoEstado = 'Cortada';
+        let esRemanente = true;
+        if (nuevoStock <= EPS) {
+          nuevoEstado = 'Agotada';
+          esRemanente = false;
+        } else {
+          nuevoEstado = 'Cortada';
+          esRemanente = true;
+        }
+
+        await pieza.update({
+          cantidadDisponible: nuevoStock,
+          estado: nuevoEstado,
+          esRemanente: esRemanente
+        }, { transaction: t });
+
+        const movData = {
+          materiumId: null,
+          productoId: productoId,
+          cotizacionId: cotizacionId,
+          tipoProducto: 'PR',
+          tipoMovimiento: 'SALIDA',
+          referenciaDeDocumento: refDoc,
+          ubicacionOrigenId: ubicacionOrigenId,
+          ubicacionDestinoId: null,
+          itemFisicoId: itemId,
+          usuarioId: usuarioId
+        };
+        movData[cantidadColumn] = aConsumir;
+
+        const mov = await movimientoInventario.create(movData, { transaction: t });
+
+        detalles.push({
+          itemId,
+          tipo: 'PR',
+          longitudInicial: pieza.longitudInicial !== undefined ? parseFloat(pieza.longitudInicial) : null,
+          consumo: aConsumir,
+          nuevoStock,
+          movimientoId: mov.id,
+          estado: nuevoEstado,
+          esRemanente
+        });
+
+        restante = +(restante - aConsumir);
+      }
+
+      if (restante > EPS) {
+        throw new Error(`No se pudo consumir la cantidad completa del producto. Falta: ${restante}`);
+      }
+
+      return {
+        success: true,
+        tipo: 'PR',
+        id: productoId,
+        ubicacionOrigenId,
+        cantidadSolicitada: cantidad,
+        totalConsumido: detalles.reduce((s, d) => s + d.consumo, 0),
+        detalles
+      };
+    }
+  }; // fin runWithTx
+
+  // Si nos pasaron transaction la usamos; si no, abrimos una transacción nueva (comportamiento anterior)
+  if (transaction) {
+    return await runWithTx(transaction);
+  } else {
+    return await sequelize.transaction(async (t) => {
+      return await runWithTx(t);
+    });
+  }
+}
+
+
+// SACAR DEL INVENTARIO
 async function sacarDelInventario({
   materiumId = null,
   productoId = null,
@@ -939,6 +1624,8 @@ async function seleccionarYTrasladarParaProyecto({
   applyChanges = true,
   idsAdicionales = {}
 }) {
+
+
   if (!materiumId && !productoId) throw new Error('Debe indicar materiumId o productoId.');
   if (!ubicacionOrigenId) throw new Error('Falta ubicacionOrigenId.');
   const cantidad = parseFloat(cantidadNecesaria);
@@ -1276,6 +1963,7 @@ async function updateCantidadComprometida(materiaId, productoId, cantidad, ubica
 }
 // Actualizar compromiso
 async function updateCompromiso(materiaId, entrega, cotizacionId, productoId){
+
   // Consultamos compromiso
   if(!productoId){
       const consulta = await cotizacion_compromiso.findOne({
@@ -1445,33 +2133,50 @@ async function comprometerStock(materiaId, ubicacionId, cantidad, productoId) {
 }
 
 // Actualizar compromiso
-async function updateCompromisoEntregado(materiaId, cotizacionId, cantidad, productoId) {
-  if(!productoId){
-    let inv = await cotizacion_compromiso.findOne({ where: { materiumId: materiaId, cotizacionId: cotizacionId } });
-    if (!inv) {
-      return null;
-    }
-    let valor = inv.cantidadEntregada + parseFloat(cantidad);
-    inv.cantidadEntregada = valor;
+async function updateCompromisoEntregado(datos) {
+  const { materiumId, cotizacionId, cantidad, productoId } = datos;
 
-    if(valor >= inv.cantidadComprometida){
-      inv.estado = 'completo';
-    }else if(valor <= 0){
-      inv.estado = 'reservado';
-    }else{
-      inv.estado = 'parcial';
-    }
+  console.log('datooods', materiumId, cotizacionId, cantidad, productoId)
   
-    await inv.save();
-    return inv;
-  }else{
-    let inv = await inventario.findOne({ where: { productoId: productoId, ubicacionId } });
-    if (!inv) {
-      inv = await inventario.create({ productoId, ubicacionId, cantidad: 0, cantidadComprometida: 0 });
+  try{
+  if(!productoId){
+      console.log('empiece a consultar')
+      let inv = await cotizacion_compromiso.findOne({ where: { materiaId:materiumId, cotizacionId } }).catch(err => {
+        console.log(err)
+      })
+      console.log('resultado, ', inv)
+      if (!inv) {
+        console.log('No hemos encontrado esto')
+        return null;
+      }
+      console.log('inv', inv)
+      
+      let valor = Number(inv.cantidadEntregada) + parseFloat(cantidad);
+      console.log('recibida', cantidad)
+      console.log('valor a dar', valor)
+      inv.cantidadEntregada = valor;
+      if(valor >= inv.cantidadComprometida){
+        inv.estado = 'completo';
+      }else if(valor <= 0){
+        inv.estado = 'reservado';
+      }else{
+        inv.estado = 'parcial';
+      }
+    
+      await inv.save();
+      return inv;
+    }else{
+      let inv = await inventario.findOne({ where: { productoId: productoId, ubicacionId } });
+      if (!inv) {
+        inv = await inventario.create({ productoId, ubicacionId, cantidad: 0, cantidadComprometida: 0 });
+      }
+      inv.cantidadComprometida = parseFloat(cantidad);
+      await inv.save();
+      return inv;
     }
-    inv.cantidadComprometida = parseFloat(cantidad);
-    await inv.save();
-    return inv;
+  }catch(err){
+    console.log('No encontrado')
+    return null;
   }
   
 }
@@ -1942,4 +2647,10 @@ module.exports = {
     getItemOverviewByBodega, // OBTENER
     listarItemsEnInventarioOptimizado, // OBTENER TODOS LOS PRODUCTOS POR ID
     updateCompromisoEntregado, // actualizar compromiso entregado
+    getItemsConMenosStock, // VER MENOS STOCK
+    getItemsConMasMovimiento, // Obtener item con más movimiento
+    consolidarKit, // Consolidar kit por almacen
+
+
+    sacaMateriasConsolidadoTransactional,
 }

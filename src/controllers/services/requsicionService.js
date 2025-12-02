@@ -1,6 +1,6 @@
 const dayjs = require('dayjs');
 const { cotizacion, kitCotizacion, requisicion, comprasCotizacion,  ComprasCotizacionProyecto, 
-    comprasCotizacionItem, itemRequisicion, itemToProject, Op
+    comprasCotizacionItem, itemRequisicion, itemToProject, necesidadProyecto, Op
 } = require('../../db/db');
 
 // Crear requsición
@@ -26,6 +26,20 @@ const createRequisicion = async(nombre, fecha, para, cotizacionId) => {
 
 
 // COMPRAS Y COTIZACIONES
+// Generamos función para anexar necesidad al proyecto - KITS y producto terminado
+const giveNecesidadToProject = async(kitId, productoId, cantidad, requisicionId) => {
+
+    if(!cantidad || !requisicionId) return null;
+
+    const addRegistro = await necesidadProyecto.create({
+        cantidadComprometida: Number(cantidad),
+        cantidadEntrega: 0,
+        requisicionId: requisicionId,
+        kitId: kitId ? kitId : null, 
+        productoId: productoId ? productoId : null
+    })
+    return true
+}
 
 // Nueva cotización de compras
 const nuevaCompra = async(body) => {
@@ -167,4 +181,5 @@ module.exports = {
     nuevaCompra, // Nueva compra
     addItemToCotizacion, // añadir item a Cotización,
     updateItems, // Actualizar items y requisicion
+    giveNecesidadToProject, // Dar necesidad de kit o producto a proyecto 
 }
