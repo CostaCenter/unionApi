@@ -118,7 +118,10 @@ const getRealProyectosRequisicion = async (req, res) => {
                 {
                   model: productPrice,
                   where: { state: 'active' },
-                  required: false
+                  required: false,
+                },
+                {
+                    model: productoCotizacion
                 }
               ],
               required: false
@@ -134,9 +137,65 @@ const getRealProyectosRequisicion = async (req, res) => {
         .json({ msg: 'No encontramos requisiciones con esos IDs' });
     }
 
+    // -------------------------------
+    // NUEVO: traer solo productoCotizacions relevantes DIRECTAMENTE desde BD
+    // (ahora productoCotizacion está ligado a areaCotizacion -> cotizacion)
+    // -------------------------------
+    // colectar todos los areaCotizacionIds y productoIds presentes
+    const areaIdsSet = new Set();
+    const prodIdsSet = new Set();
+
+    multiReq.forEach(r => {
+      // si la requisición tiene cotizacion y ésta tiene areaCotizacions, colectar sus ids
+      if (r.cotizacion && Array.isArray(r.cotizacion.areaCotizacions)) {
+        r.cotizacion.areaCotizacions.forEach(ac => {
+          if (ac && (ac.id || ac.areaCotizacionId || ac.area_id)) {
+            areaIdsSet.add(ac.id || ac.areaCotizacionId || ac.area_id);
+          }
+        });
+      }
+      // recorrer items para colectar productos presentes
+      if (r.itemRequisicions && Array.isArray(r.itemRequisicions)) {
+        r.itemRequisicions.forEach(it => {
+          if (it.producto && (it.producto.id || it.producto.productoId)) {
+            prodIdsSet.add(it.producto.id || it.producto.productoId);
+          }
+        });
+      }
+    });
+
+    const areaIds = Array.from(areaIdsSet);
+    const prodIds = Array.from(prodIdsSet);
+
+    // mapa que guardará las productoCotizacions por clave "productoId-areaCotizacionId"
+    const prodCotMap = {};
+
+    if (areaIds.length && prodIds.length) {
+      // Traigo solo las productoCotizacions que coinciden con esas areas y productos
+      const prodCotRows = await productoCotizacion.findAll({
+        where: {
+          areaCotizacionId: { [Op.in]: areaIds },
+          productoId: { [Op.in]: prodIds }
+        },
+        raw: true
+      });
+
+      prodCotRows.forEach(pc => {
+        const pId = pc.productoId || pc.producto || pc.producto_id;
+        const aId = pc.areaCotizacionId || pc.areaCotizacion || pc.area_cotizacion_id;
+        const key = `${pId}-${aId}`;
+        if (!prodCotMap[key]) prodCotMap[key] = [];
+        prodCotMap[key].push(pc);
+      });
+    }
+    // -------------------------------
+    // Fin nuevo bloque de carga eficiente ligado por areaCotizacion
+    // -------------------------------
+
     const consolidado = {};
     const plainReqs = multiReq.map(r => r.toJSON());
     const kitsMap = {}; // { kitId: { id, nombre, totalKits, precioUnidad } }
+    const productoTermMap = {}; // { prodId: { id, nombre, totalProductos, precioUnidad, productoCotizacion } }
 
     // -------------------------------
     // 1️⃣ Consolidado de materias y productos
@@ -177,6 +236,70 @@ const getRealProyectosRequisicion = async (req, res) => {
           }
           consolidado[prodId].totalCantidad += Number(item.cantidad);
           consolidado[prodId].entregado += Number(item.cantidadEntrega);
+
+          // -------------------------------
+          // Acumular para productoTerminadoConsolidado (solo tipo = producto)
+          // -------------------------------
+          const pid = item.producto.id;
+          const qty = Number(item.cantidad || 0);
+
+          // obtener precio unitario desde productPrices (si hay alguno activo)
+          let precioUnidad = 0;
+          const pPrices = item.producto.productPrices || [];
+          if (Array.isArray(pPrices) && pPrices.length) {
+            const activePrice = pPrices.find(pp => pp.state === 'active') || pPrices[0];
+            if (activePrice) {
+              precioUnidad = Number(activePrice.precio || activePrice.price || activePrice.valor || 0);
+            }
+          }
+
+          // ahora obtenemos las productoCotizacions desde el mapa que consultamos en BD
+          // Buscamos todas las areaCotizacions que pertenezcan a la cotizacion de esta requisición
+          const areaArr = (req.cotizacion && Array.isArray(req.cotizacion.areaCotizacions)) ? req.cotizacion.areaCotizacions : [];
+          // reunimos todas las productoCotizacions que pertenezcan a cualquiera de esas areas
+          let prodCotizArr = [];
+          if (areaArr.length) {
+            areaArr.forEach(ac => {
+              const aId = ac.id || ac.areaCotizacionId || ac.area_id;
+              const key = `${pid}-${aId}`;
+              if (prodCotMap[key] && prodCotMap[key].length) {
+                prodCotizArr = prodCotizArr.concat(prodCotMap[key]);
+              }
+            });
+            // opcional: eliminar duplicados si existieran (por si la misma fila aparece más de una vez)
+            if (prodCotizArr.length) {
+              const seen = new Set();
+              prodCotizArr = prodCotizArr.filter(pc => {
+                const uniq = pc.id || `${pc.productoId}-${pc.areaCotizacionId}-${pc.someUnique}`;
+                if (seen.has(uniq)) return false;
+                seen.add(uniq);
+                return true;
+              });
+            }
+          }
+
+          if (!productoTermMap[pid]) {
+            productoTermMap[pid] = {
+              tipo: 'producto',
+              id: pid,
+              nombre: item.producto.item || item.producto.name || `Producto ${pid}`,
+              totalProductos: 0,
+              precioUnidad: precioUnidad || 0,
+              productoCotizacion: prodCotizArr || []
+            };
+          }
+
+          productoTermMap[pid].totalProductos += qty;
+
+          // si no tenemos precio y encontramos uno ahora, lo asignamos
+          if ((!productoTermMap[pid].precioUnidad || productoTermMap[pid].precioUnidad === 0) && precioUnidad) {
+            productoTermMap[pid].precioUnidad = precioUnidad;
+          }
+
+          // Actualizar productoCotizacion si viene distinto (prioriza las que pertenecen a las areas de esta cotizacion)
+          if (Array.isArray(prodCotizArr) && prodCotizArr.length) {
+            productoTermMap[pid].productoCotizacion = prodCotizArr;
+          }
         }
       });
     });
@@ -235,12 +358,14 @@ const getRealProyectosRequisicion = async (req, res) => {
     // -------------------------------
     const resultado = Object.values(consolidado);
     const kitsConsolidados = Object.values(kitsMap);
+    const productoTerminadoConsolidado = Object.values(productoTermMap); // <--- nuevo campo
 
     const result = {
       proyectos: multiReq,
       consolidado: resultado,
       totalRequisiciones: multiReq.length,
-      kitsConsolidados // nuevo campo (no rompe nada)
+      kitsConsolidados, // nuevo campo (no rompe nada)
+      productoTerminadoConsolidado // <-- agregado exactamente aquí
     };
 
     res.status(200).json(result);
@@ -251,6 +376,8 @@ const getRealProyectosRequisicion = async (req, res) => {
       .json({ msg: 'Ha ocurrido un error en la principal', error: err.message });
   }
 };
+
+
 
 
 
