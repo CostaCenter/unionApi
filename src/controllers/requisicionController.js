@@ -1530,6 +1530,66 @@ const buscarPorQueryRequisicion = async (req, res) => {
       res.status(500).json({ message: 'Error en la búsqueda' });
     }
 }
+
+// Buscar requisicion por cliente, nombre, o número de cotización o número de requisicion
+const buscarPorQueryRequisicionComplete = async (req, res) => {
+  try { 
+    const { q } = req.query; 
+    const texto = String(q || '').trim();
+
+    const whereClause = {};
+
+    // Si no hay query: devolver todo
+    if (!texto) {
+      const resultadosAll = await requisicion.findAll({
+        include: [{
+          model: cotizacion,
+          include: [{ model: client }]
+        }],
+      });
+      return res.json(resultadosAll);
+    }
+
+    const isNumeric = !isNaN(texto);
+
+    if (isNumeric) {
+      const numeroIngresado = Number(texto);
+
+      // Número real de cotización = q - 21719
+      const numeroCotReal = numeroIngresado - 21719;
+
+      whereClause[Op.or] = [
+        { id: numeroIngresado },               // ID requisición (directo)
+        { ['$cotizacion.id$']: numeroCotReal } // ID cotización (aplica -21719)
+      ];
+
+    } else {
+      const like = { [Op.iLike]: `%${texto}%` };
+
+      whereClause[Op.or] = [
+        { nombre: like },                       // nombre requisición
+        { ['$cotizacion.client.nombre$']: like }  // nombre cliente
+      ];
+    }
+
+    const resultados = await requisicion.findAll({
+      where: whereClause,
+      include: [{
+        model: cotizacion,
+        include: [{ model: client }]
+      }],
+    });
+
+    res.json(resultados);
+  
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error en la búsqueda' });
+  }
+};
+
+
+
 // Proveedor
 const buscarPorQueryProveedor = async (req, res) => {
     try { 
@@ -1738,8 +1798,8 @@ const getOrdenDeCompra = async (req, res) => {
             },{ 
                 model: requisicion,
                 as: 'requisiciones',
-                through: { attributes: [] }
-            } ]
+                through: { attributes: [] } 
+            }]
         }); 
 
         if(!searchOrden) return res.status(404).json({msg: 'No hemos encontrado esto'});
@@ -2498,10 +2558,11 @@ module.exports = {
     buscarPorQueryRequisicion, // Buscamos requisicion por query
     buscarPorQueryProveedor, // Buscamos proveedor por query
     buscarPorQueryOrden, // Buscamos orden por query
-
+    buscarPorQueryRequisicionComplete, // Buscar por cliente, nombre, id y cotizacionID
     // Obtener productos y kits para compromisos need Project
     getNecesidadProject,
     getProjectByProduccion, // Obtenemos requisicion para producción
     getKitOProductFromProduction, // Obtenemos kit o producto necesitado en producción por requisición
+
 
 }
