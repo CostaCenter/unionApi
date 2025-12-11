@@ -117,7 +117,7 @@ const getRealProyectosRequisicion = async (req, res) => {
             {
               model: producto,
               include: [
-                {
+                { 
                   model: productPrice,
                   where: { state: 'active' },
                   required: false,
