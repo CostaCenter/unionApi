@@ -122,8 +122,8 @@ const updateItems =  async (cotizacion) => {
                             requisicionId: r.requisicionId
                         }
                     });
-                    let cantidadNueva = Number(getItemToUpdate.cantidadEntrega + r.cantidad)
-                    getItemToUpdate.cantidadEntrega = cantidadNueva;
+                    let cantidadNueva = Number(Number(getItemToUpdate.cantidadEntrega) + r.cantidad)
+                    getItemToUpdate.cantidadEntrega = Number(cantidadNueva);
 
                     getItemToUpdate.estado = cantidadNueva < getItemToUpdate.necesidad ? 'parcialmente' : 'comprado'
                     

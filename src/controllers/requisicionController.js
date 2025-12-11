@@ -108,6 +108,8 @@ const getRealProyectosRequisicion = async (req, res) => {
                   model: price,
                   where: { state: 'active' },
                   required: false
+                }, {
+                    model: linea
                 }
               ],
               required: false
@@ -211,6 +213,7 @@ const getRealProyectosRequisicion = async (req, res) => {
               nombre: item.materium.description,
               medida: item.materium.medida,
               unidad: item.materium.unidad,
+              linea: item.materium.linea.id,
               precios: item.materium.prices,
               entregado: 0,
               totalCantidad: 0
@@ -2305,7 +2308,10 @@ const getAllCotizacionsComprasAlmacen = async (req, res) => {
             include:[{
                 model: requisicion,
                 as: 'requisiciones',
-                through: { attributes: [] }     // oculta columnas de la tabla pivote
+                through: { attributes: [] },     // oculta columnas de la tabla pivote
+                include:[{
+                    model: co
+                }]
             },{
                 model: proveedor
             }] 
