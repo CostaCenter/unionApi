@@ -26,7 +26,7 @@ const getAllRequisiciones = async (req, res) => {
                     { model: user, attributes: ['id', 'name'] }
                 ]
             }],
-            order: [['createdAt', 'DESC']]
+            order: [['fecha', 'DESC']]
         });
 
         if (!searchReq || !searchReq.length) {
@@ -2310,11 +2310,15 @@ const getAllCotizacionsComprasAlmacen = async (req, res) => {
                 as: 'requisiciones',
                 through: { attributes: [] },     // oculta columnas de la tabla pivote
                 include:[{
-                    model: co
+                    model: cotizacion,
+                    include:[{
+                        model: client
+                    }]
                 }]
             },{
                 model: proveedor
-            }] 
+            }],
+            order: [['createdAt', 'DESC']]
         })  
 
         if(!searchAllCotizacions) return res.status(404).json({msg: 'No hay resutlados'});
@@ -2368,6 +2372,44 @@ const changeItemCotizacionCompras = async (req, res) => {
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
+    }
+}
+
+// Cambiamos la fecha de llega del proyecto y la fecha de entrega
+const changeTime = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { requisicionId, fecha, necesaria } = req.body;
+        // Validamos datos
+        if(!requisicionId || !fecha || !necesaria) return res.status(500).json({msg: 'Parámetros no son validos.'});
+        // Caso contrario, avanzamos
+
+        if (!Number.isInteger(necesaria)) {
+            return res.status(400).json({ msg: 'El valor "necesaria" debe ser un número entero.' });
+        }
+
+        const fechaBase = dayjs(fecha).toDate();
+
+        const fechaEntrega = dayjs(fechaBase)
+        .add(necesaria, 'day')
+        .toDate(); // o format()
+
+        const updateRequisicion = await requisicion.update({
+            fecha: fechaBase,
+            fechaNecesaria: fechaEntrega
+        }, {
+            where: {
+                id: requisicionId
+            }
+        })
+
+        if(!updateRequisicion) return res.status(502).json({msg: 'No hemos logrado actualizar esto'});
+        // Caso contrario, avanzamos
+        res.status(200).json({msg: 'Actualizado'})
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
 
@@ -2516,6 +2558,108 @@ const getDataProject = async (req, res) => {
     }
 }
 
+
+
+
+// modificar orden de compra items
+const removeItemComprasCotizacion = async(req, res) => {
+    try{
+        // Recibimos datos por body
+        const { itemId, tipo, comprasId } = req.body;
+
+        if(!itemId || !tipo || !comprasId) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        // Caso contrario, avanzamos
+
+        if(tipo == 'producto'){
+            const removeItem = comprasCotizacionItem.destroy({
+                where: {
+                    comprasCotizacionId: comprasId,
+                    productoId: itemId
+                }
+            })
+
+            if(!removeItem) return res.status(400).json({msg: 'No hemos logrado eliminar esto'});
+            return res.status(200).json({msg: 'Eliminado con exito'});
+        }else{
+            const removeItem = comprasCotizacionItem.destroy({
+                where: {
+                    comprasCotizacionId: comprasId,
+                    materiumId: itemId
+                }
+            })
+
+            if(!removeItem) return res.status(400).json({msg: 'No hemos logrado eliminar esto'});
+            return res.status(200).json({msg: 'Eliminado con exito'});
+        }
+        
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
+// Cambiar precio de un item compras Cotizacion
+const changePriceToItemComprasCotizacion = async(req, res) => {
+    try{
+        // Recibimos los datos por body
+        const { itemId, price, desc } = req.body;
+        // Validamos la entrada de los parámetros.
+        if(!itemId || !price ) return res.status(400).json({msg: 'Los parámetros no son validos'});
+
+        const searchItem = await comprasCotizacionItem.findByPk(itemId);
+        if(!searchItem) return res.status(404).json({msg: 'No hemos encontrado esto'});
+        // Caso contrario avanzamos
+        let descuento = desc;
+        let precio = price;
+        let precioUnidad = Number(precio) / Number(searchItem.cantidad);
+        let precioFinal = Number(precio) - Number(descuento);
+        const updatePrice = await comprasCotizacionItem.update({
+            precioUnidad,
+            precioTotal: precioFinal,
+            precio,
+            descuento,
+        }, {
+            where: {
+                id: itemId
+            }
+        })
+
+        if(!updatePrice) return res.status(502).json({msg: 'No hemos logrado actualizar esto'});
+        // Caso contrario, avanzamos
+        res.status(200).json({msg: 'Actualizado'});
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
+// Eliminar una orden de compra
+const removeOrdenDeCompra = async (req, res) => {
+    try{
+        // Recibimos datos por query
+        const { ordenId } = req.query;
+        // Validamos entrada del query
+        if(!ordenId) return res.status(400).json({msg: 'Query no valido.'});
+        // Caso contrario, avanzamos
+        const updateProcess = await comprasCotizacion.update({
+            estadoPago: 'remove'
+        }, {
+            where: {
+                id: ordenId
+            }
+        });
+
+        if(!updateProcess) return res.status(502).json({msg: 'No ha sido posible'});
+        // Caso contrario
+        res.status(200).json({msg: 'Eliminado con exito.'});
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    }
+}
+
 module.exports = { 
     getAllRequisiciones, // Obtener todas las requsiciones
     getRequisicion, // Obtener una requisición 
@@ -2570,5 +2714,8 @@ module.exports = {
     getProjectByProduccion, // Obtenemos requisicion para producción
     getKitOProductFromProduction, // Obtenemos kit o producto necesitado en producción por requisición
 
-
+    removeOrdenDeCompra, // Remover cotización
+    changePriceToItemComprasCotizacion, // Cambiar el precio de la orden de compra    
+    removeItemComprasCotizacion, // Quitar un item de la orden de compras
+    changeTime, // Actualizar fechas de la requisición
 }

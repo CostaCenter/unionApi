@@ -292,6 +292,77 @@ const getKitsFiltrados = async (req, res) => {
     }
 };
 
+// Filtrar kits (sin fecha, con id, nombre y estado)
+const getKitsFiltradosProduccion = async (req, res) => {
+    try {
+        const {
+            name,
+            categoriaId,
+            extensionId,
+            lineaId,
+            state
+        } = req.query;
+
+        const whereConditions = {};
+
+        // ------------------------
+        // 🔎 Filtro por NAME o ID
+        // ------------------------
+        if (name) {
+            const isNumber = !isNaN(Number(name));
+
+            if (isNumber) {
+                // Buscar por ID
+                whereConditions.id = Number(name);
+            } else {
+                // Buscar por nombre (LIKE)
+                whereConditions.name = {
+                    [Op.iLike]: `%${name}%`
+                };
+            }
+        }
+
+        // ------------------------
+        // 📦 Filtros adicionales
+        // ------------------------
+        if (categoriaId) {
+            whereConditions.categoriumId = categoriaId;
+        }
+
+        if (extensionId) {
+            whereConditions.extensionId = extensionId;
+        }
+
+        if (lineaId) {
+            whereConditions.lineaId = lineaId;
+        }
+
+        if (state) {
+            whereConditions.state = state;
+        }
+
+        // ------------------------
+        // 📡 Consulta
+        // ------------------------
+        const kitsResults = await kit.findAll({
+            where: whereConditions,
+            include: [
+                { model: categoria },
+                { model: linea },
+                { model: extension }
+            ],
+            order: [['createdAt', 'DESC']]
+        });
+
+        return res.status(200).json(kitsResults);
+
+    } catch (err) {
+        console.error('Error al filtrar kits:', err);
+        res.status(500).json({ msg: 'Error en el servidor.' });
+    }
+};
+
+
 // KABO
 const getAllKitCompleted = async(req, res) => {
     try{
@@ -373,7 +444,7 @@ const getKits = async(req, res) => {
                 model: extension,
                 attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type'] }
             }], 
-            order:[['createdAt', 'DESC']]
+            order:[['createdAt', 'DESC']],
         }).catch(err => {
             console.log(err)
             return null
@@ -435,7 +506,7 @@ const getAllKit = async(req, res) => {
                     attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'state'] }
                 }
             ] ,
-            order:[['name', 'ASC']]
+            order:[['name', 'ASC']],
         });
 
         if(!searchAll || searchAll.length === 0) return res.status(404).json({msg: 'No se encontraron kits'});
@@ -1285,6 +1356,7 @@ const cancelRequired = async (req, res) => {
 
 module.exports = { 
     searchKitsQuery, // SearchKits With Query
+    getKitsFiltradosProduccion, // Search Kits in productions query
     addKit, // Agregamos KIT.
     getProduccion, // Obtenemos todo
     getKitPorFecha, // Obtenemos resultados por fecha
