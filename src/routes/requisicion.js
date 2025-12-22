@@ -30,7 +30,7 @@ router.route('/put/updateCantidad/comprasCotizacionItem')
 
 router.route('/get/cotizar/realTime/MP')
     .post(getProveedoresComunes)
-
+    
 router.route('/get/cotizar/realTime/PT')
     .post(getProveedoresComunesPT)
     

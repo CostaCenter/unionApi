@@ -128,7 +128,7 @@ const getRealProyectosRequisicion = async (req, res) => {
               ],
               required: false
             }
-          ]
+          ] 
         }
       ]
     });
@@ -138,6 +138,7 @@ const getRealProyectosRequisicion = async (req, res) => {
         .status(404)
         .json({ msg: 'No encontramos requisiciones con esos IDs' });
     }
+
 
     // -------------------------------
     // NUEVO: traer solo productoCotizacions relevantes DIRECTAMENTE desde BD
@@ -193,7 +194,7 @@ const getRealProyectosRequisicion = async (req, res) => {
     // -------------------------------
     // Fin nuevo bloque de carga eficiente ligado por areaCotizacion
     // -------------------------------
-
+ 
     const consolidado = {};
     const plainReqs = multiReq.map(r => r.toJSON());
     const kitsMap = {}; // { kitId: { id, nombre, totalKits, precioUnidad } }
@@ -233,10 +234,12 @@ const getRealProyectosRequisicion = async (req, res) => {
               medida: item.producto.medida,
               unidad: item.producto.unidad,
               precios: item.producto.productPrices,
+              cotizado: item.producto.productoCotizacion,
               entregado: 0,
               totalCantidad: 0
             };
           }
+
           consolidado[prodId].totalCantidad += Number(item.cantidad);
           consolidado[prodId].entregado += Number(item.cantidadEntrega);
 
@@ -940,11 +943,11 @@ const getNecesidadProject = async(req, res) => {
         .then(res => res.data);
 
         getData.resumenKits.map(async (r) => {
-            const asignarResumen = await giveNecesidadToProject(r.id, null, r.cantidad, requisicionId)
+            const asignarResumen = await giveNecesidadToProject(requisicionId, r.id, null, r.cantidad, )
         })
 
-        getData.resumenProductos.map(async (r) => {
-            const asignarResumen = await giveNecesidadToProject(null, r.id,  r.cantidad, requisicionId)
+        getData.resumenProductos.map(async (r) => { 
+            const asignarResumen = await giveNecesidadToProject(requisicionId, null, r.id,  r.cantidad)
         })
 
 
@@ -954,6 +957,7 @@ const getNecesidadProject = async(req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
+
 const addAllItems = async (req, res) => {
     try {
         const { requisicionId } = req.params;
@@ -1000,7 +1004,8 @@ const addAllItems = async (req, res) => {
                     cantidad: comprometer
                 };
                 let b = await createCompromiso(val.id, comprometer, getData.requisicion.cotizacionId); // Llamada para crear compromiso
-                return await axios.post(`https://unionapi-production.up.railway.app/api/requisicion/post/addMateria/req`, body)
+                let c = await axios.post(`https://unionapi-production.up.railway.app/api/requisicion/post/addMateria/req`, body)
+                return c;
             })
         );
 
@@ -1016,7 +1021,7 @@ const addAllItems = async (req, res) => {
                     cantidad: consumo
                 };
 
-                let a = await createCompromiso(null, comprometer, getData.requisicion.cotizacionId, val.id); // Llamada para crear compromiso
+                let a = await createCompromiso(null, consumo, getData.requisicion.cotizacionId, val.id); // Llamada para crear compromiso
                 return await axios.post(`https://unionapi-production.up.railway.app/api/requisicion/post/addItem/req`, body)
             })
         );
@@ -1345,6 +1350,10 @@ const changeToComprasToComprado = async (req, res) => {
                 id: comprasCotizacionId,
             },
             include:[{
+                model: requisicion,
+                as: 'requisiciones',
+                through: { attributes: [] }
+            }, {
                 model: comprasCotizacionItem
             }]
         });
@@ -1381,10 +1390,14 @@ const changeToComprasToComprado = async (req, res) => {
             ),
         ];
 
-        for (const reqId of requisicionIds) {
-            // Todos los items de esa requisición
+
+        console.log('proyectos', searchData.requisiciones);
+
+    
+        searchData.requisiciones.forEach(async (proj) => {
+            console.log('Proyecto relacionado:', proj.id);
             const allItems = await itemRequisicion.findAll({
-                where: { requisicionId: reqId },
+                where: { requisicionId: proj.id },
             });
 
             const total = allItems.length;
@@ -1401,11 +1414,39 @@ const changeToComprasToComprado = async (req, res) => {
                 nuevoEstado = "comprado";
             } 
  
+            console.log('Nuevo estado', nuevoEstado)
+            console.log('Requisicion: 1,', proj.id);
             await requisicion.update(
                 { estado: nuevoEstado },
-                { where: { id: reqId } }
+                { where: { id: proj.id } }
             ); 
-        }
+        })
+        // for (const reqId of requisicionIds) {
+        //     // Todos los items de esa requisición
+        //     const allItems = await itemRequisicion.findAll({
+        //         where: { requisicionId: reqId },
+        //     });
+
+        //     const total = allItems.length;
+        //     const comprados = allItems.filter(
+        //         (it) => it.estado === "aprobado"
+        //     ).length;
+
+        //     let nuevoEstado = "pendiente";
+        //     if (comprados === 0) {
+        //         nuevoEstado = "pendiente";
+        //     } else if (comprados < total) {
+        //         nuevoEstado = "parcialmente";
+        //     } else if (comprados === total) {
+        //         nuevoEstado = "comprado";
+        //     } 
+ 
+        //     console.log('Requisicion: 1,', reqId);
+        //     await requisicion.update(
+        //         { estado: nuevoEstado },
+        //         { where: { id: reqId } }
+        //     ); 
+        // }
         // Caso contrario, avanzamos
         res.status(200).json({msg: 'Actualizado...'});
     }catch(err){
@@ -1796,7 +1837,11 @@ const getOrdenDeCompra = async (req, res) => {
                 },{ 
                     model: materia
                 }, { 
-                    model: producto
+                    model: producto,
+                    include: {
+                        model: productoCotizacion,
+                        required: false
+                    }
                 }]
             },{ 
                 model: requisicion,
@@ -1821,7 +1866,7 @@ const getOrdenDeCompraAlmacen = async (req, res) => {
         const { ordenId } = req.params;
         // Validamos
         if(!ordenId) return res.status(400).json({msg: 'El parámetro no es valido'});
-        // Caso contrario avanzamos
+        // Caso contrario avanzamoss
 
         const searchOrden = await comprasCotizacion.findByPk(ordenId,{
             where: {

@@ -27,7 +27,7 @@ const createRequisicion = async(nombre, fecha, para, cotizacionId) => {
 
 // COMPRAS Y COTIZACIONES
 // Generamos función para anexar necesidad al proyecto - KITS y producto terminado
-const giveNecesidadToProject = async(kitId, productoId, cantidad, requisicionId) => {
+const giveNecesidadToProject = async(requisicionId, kitId, productoId, cantidad) => {
 
     if(!cantidad || !requisicionId) return null;
 

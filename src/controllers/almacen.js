@@ -347,7 +347,7 @@ const searchMPForInventario = async (req, res) => {
                     where: {
                         ubicacionId: bodegaId
                     },
-                    required:true
+                    required:false
                 },
                 ], 
             attributes: { exclude: ['createdAt', 'updatedAt'] },
@@ -396,7 +396,7 @@ const searchPTForInventario = async (req, res) => {
                     where: {
                         ubicacionId: bodegaId
                     },
-                    required:true
+                    required:false
                 },
                 ], 
             attributes: { exclude: ['createdAt', 'updatedAt'] },
