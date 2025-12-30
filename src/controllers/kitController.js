@@ -791,6 +791,30 @@ const addItem = async (req, res) => {
     }
 } 
 
+const updateItemKitCalibre = async (req, res) => {
+    try{
+        const { itemKitId, calibreId } = req.body;
+
+        // Validamos
+        if(!itemKitId || !calibreId) return res.status(400).json({msg: 'No hemos recibido los datos correctamente.'});
+        // Caso contrario, avanzamos
+        const updateItemKit = itemKit.update({
+            calibre: calibreId
+        }, {
+            where: {
+                id: itemKitId,
+            }
+        });
+        if(!updateItemKit) return res.status(502).json({msg: 'No hemos actualizado esto.'});
+        // Avanzamos
+        res.status(201).json({msg: 'Actualizado con exito'});
+
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
 const updateItemOnKit = async (req, res) => {
     try{
         // Recibimos por body
@@ -1364,6 +1388,7 @@ module.exports = {
     addSegmento, // Nuevo segmento
     updateSegmento, // Actualizar segmento
     addItem, // Agregar Item
+    updateItemKitCalibre, // Actualizar calibre del itemKit
     updateKitt, // Actualizar kit
     clonarKit, // Clonar Kit
     clonarKitCotizacion, // Simulación

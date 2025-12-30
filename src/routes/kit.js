@@ -1,5 +1,5 @@
 const express = require('express');
-const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit, searchKitsForCoti, addSegmento, updateSegmento, getProduccion, getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit, needNewKit, addMessageToRequerimiento, giveKitToRequerimiento, getAllRequerimientos, getRequerimiento, readRequerimiento, clonarKitCotizacion, getKitsFiltradosProduccion } = require('../controllers/kitController');
+const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit, searchKitsForCoti, addSegmento, updateSegmento, getProduccion, getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit, needNewKit, addMessageToRequerimiento, giveKitToRequerimiento, getAllRequerimientos, getRequerimiento, readRequerimiento, clonarKitCotizacion, getKitsFiltradosProduccion, updateItemKitCalibre } = require('../controllers/kitController');
 const multer = require('multer');
 
 const router = express.Router();
@@ -55,6 +55,9 @@ router.route('/remove/item')
 router.route('/add/item')
     .post(addItem)
     .put(updateItemOnKit)
+
+router.route('/update/item/calibre')
+    .put(updateItemKitCalibre)
 
 router.route('/clone/:kitId/:userId')
     .get(clonarKit)

@@ -328,6 +328,46 @@ const getItem = async (req, res) => {
     }
 }
 
+// Buscar por query bien
+const searchMateriaByQuery = async (req, res) => {
+    try {
+        const { q } = req.query;
+
+        // Validamos query
+        if (!q) {
+            return res.status(400).json({ msg: 'Debe enviar un parámetro de búsqueda' });
+        }
+
+        // Detectamos si es numérico (ID)
+        const isNumber = !isNaN(q);
+
+        // Construimos condición dinámica
+        const whereCondition = isNumber
+            ? { id: Number(q) }
+            : {
+                description: {
+                    [Op.iLike]: `%${q}%` // iLike = case insensitive (Postgres)
+                }
+            };
+
+        const materiaFound = await materia.findAll({
+            where: whereCondition,
+            order: [['description', 'ASC']]
+        });
+
+        if (!materiaFound.length) {
+            return res.status(404).json({ msg: 'No se encontraron registros' });
+        }
+
+        res.status(200).json(materiaFound);
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: 'Error al buscar materia prima' });
+    }
+};
+
+
 // Consultar toda la matería prima
 const getAllMateria = async(req, res) => {
     try{
@@ -685,6 +725,7 @@ const updateToInactivePCMP = async (req, res) => {
 module.exports = { 
     buscarPorQuery, // Buscador
     getItem, // Obtener item individual
+    searchMateriaByQuery, // Buscar por query
     getAllMateria, // Obtener todos los registros de la tabla. Sin filtros**
     addMateria, // Agregar matería al sistema. 
     clonarMateriaPrima, // Clonar item  

@@ -1,5 +1,5 @@
 const express = require('express');
-const { addMateria, updateMateria, getAllMateria, getItem, buscarPorQuery, clonarMateriaPrima, deleteMP, getMateriaComportamiento, getAllPriceMateriaProvider } = require('../controllers/materiaControllers');
+const { addMateria, updateMateria, getAllMateria, getItem, buscarPorQuery, clonarMateriaPrima, deleteMP, getMateriaComportamiento, getAllPriceMateriaProvider, searchMateriaByQuery } = require('../controllers/materiaControllers');
 const { getAllProducto, addProductoTerminado, updateProducto, getItemProducto, buscarPorQueryProducto, deleteProducto, clonarProducto, getProduccionPorFecha, getProductosFiltrados, getProduccion, getAllPriceProductoTerminadoProvider } = require('../controllers/finalProduct');
 const { newService, updateService, getServices } = require('../controllers/serviciosCotizacion');
 
@@ -13,6 +13,9 @@ router.route('/get/graph/data/:materiaId')
 router.route('/get/prices/all/:materiaId/:proveedorId')
     .get(getAllPriceMateriaProvider)
 
+router.route('/searchByQuery')
+    .get(searchMateriaByQuery)  
+    
 router.route('/search')
     .get(getAllMateria)
 

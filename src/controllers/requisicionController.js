@@ -700,9 +700,10 @@ const getRequisicion = async (req, res) => {
                         const key = `${item.materium.id}`;
                         const cantidadTotal = Number(item.medida) * Number(cantidadKitEnCoti);
 
+                        const calibre = item.calibre; 
                         if (!totalMateriaPrima[key]) {
                             totalMateriaPrima[key] = { 
-                                id: item.materium.id,
+                                id: item.calibre ? item.calibre : item.materium.id,
                                 cguno: item.materium.item,
                                 nombre: item.materium.description, 
                                 medidaOriginal: item.materium.medida, 
@@ -960,8 +961,10 @@ const getNecesidadProject = async(req, res) => {
 
 const addAllItems = async (req, res) => {
     try {
+        // Recibimos datos por params
         const { requisicionId } = req.params;
 
+        // Si no existe, returnamo
         const getData = await axios.get(`https://unionapi-production.up.railway.app/api/requisicion/get/${requisicionId}`)
         .then((res) => {
             console.log(res.data);
@@ -1002,7 +1005,7 @@ const addAllItems = async (req, res) => {
                     requisicionId,
                     materiaId: val.id,
                     cantidad: comprometer
-                };
+                }; 
                 let b = await createCompromiso(val.id, comprometer, getData.requisicion.cotizacionId); // Llamada para crear compromiso
                 let c = await axios.post(`https://unionapi-production.up.railway.app/api/requisicion/post/addMateria/req`, body)
                 return c;
