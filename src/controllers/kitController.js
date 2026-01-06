@@ -27,7 +27,9 @@ const searchKitsForCoti = async (req, res) => {
 
                 // 1. Empezamos con la condición que siempre se aplica.
         const whereClause = {
-            state: 'completa'
+            state: {
+                [Op.in]: ['completa', 'simulacion']
+            }
         };
 
         // 2. Aplicamos la lógica condicional para la búsqueda.
