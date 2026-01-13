@@ -479,6 +479,7 @@ async function registrarMovimientoAlmacen(datosMovimiento) {
     let itemsCreados = [];
     
     if (tipo === 'ENTRADA') {
+        console.log('ENTRADA: antes de crear item fisico')
         // En la ENTRADA, la cantidad (ej: 60 ML) se convierte en 'numPiezas' (ej: 10 varillas).
         itemsCreados = await crearItemFisico( 
             // 🚨 VERIFICA ESTO: materiumId DEBE SER USADO AQUÍ
@@ -488,6 +489,9 @@ async function registrarMovimientoAlmacen(datosMovimiento) {
             numPiezas,  
             cotizacionId  
         );
+
+
+        console.log('ENTRADA: despues de crear item fisico')
 
     } else if (tipo === 'SALIDA') {
         // En la SALIDA, se consume una parte de una pieza específica (itemFisicoId).
@@ -507,11 +511,13 @@ async function registrarMovimientoAlmacen(datosMovimiento) {
     // Si fue SALIDA/TRANSFERENCIA, registramos el itemFisicoId.
     const itemMovimientoId = (tipo === 'ENTRADA') ? null : itemFisicoId; 
 
+    console.log('Debe crear movimiento')
+    console.log(materiaId, productoId, cotizacionId, cantidad, tipoProducto, tipo, refDoc, ubicacionOrigenId, ubicacionDestinoId, itemMovimientoId)
     const movimiento = await movimientoInventario.create({
         materiumId: materiaId,
         productoId,
         cotizacionId, 
-        cantidadAfectada: cantidad, // Usamos la cantidad total del movimiento
+        cantidad: cantidad, // Usamos la cantidad total del movimiento
         tipoProducto,
         tipoMovimiento: tipo,
         referenciaDeDocumento: refDoc,
