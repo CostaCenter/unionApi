@@ -12,6 +12,10 @@ module.exports = sequelize => {
             allowNull: false,
             defaultValue: 0
         },
+        medida: {
+            type: DataTypes.STRING,
+            allowNull: true
+        },
         estado: {
             type: DataTypes.ENUM('reservado', 'parcial', 'completo', 'liberado'),
             defaultValue: 'reservado'

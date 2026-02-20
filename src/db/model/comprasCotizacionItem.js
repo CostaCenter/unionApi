@@ -22,6 +22,13 @@ module.exports = sequelize => {
         estado: {
             type: DataTypes.STRING,
             defaultValue: 'pendiente'
+        },
+        medida: {
+            type: DataTypes.STRING
+        },
+        entregado: {
+            type: DataTypes.BOOLEAN,
+            defaultValue: false
         }
     })  
 }     

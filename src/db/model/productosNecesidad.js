@@ -9,6 +9,9 @@ module.exports = sequelize => {
         cantidadEntregada: {
             type: DataTypes.DECIMAL(10,4) 
         },
+        medida: {
+            type: DataTypes.STRING
+        },
         estado: {
             type: DataTypes.ENUM('reservado', 'parcial', 'completo', 'liberado'),
             defaultValue: 'reservado'

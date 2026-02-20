@@ -48,6 +48,8 @@ const modelUbicacion = require('./model/ubicacion'); // Ubicación.
 const modelMovimientoInventario = require('./model/movimientosInventario'); // Movimiento en inventario
 const modelCotizacionCompromiso = require('./model/cotizacion_compromiso'); // Compromisos de la cotización
 const modelInventarioItemFisico = require('./model/inventarioItemfisico');
+const modelStock = require('./model/stock'); // Tabla agregada: stock agregado/agrupado
+const modelStockMove = require('./model/stockMove'); // Movimientos de stock (historial)
 const modelComprasCotizacion = require('./model/comprasCotizacion'); // Cotización que proviene de los proveedores
 const modelComprasCotizacionProyecto = require('./model/cotizacionComprasProjecto'); // Relaciono el proyecto con la cotización
 const modelComprasCotizacionItem = require('./model/comprasCotizacionItem'); // Item que relaciona el proyecto y la compra
@@ -58,6 +60,14 @@ const modelItemRequisicion = require('./model/itemRequisicion');
 const modelNecesitaProyecto = require('./model/productosNecesidad'); // NECESIDAD DEL PROYECTO - KIT O PRODUCTO TERMINADO
 const modelLogs = require('./model/logs');
 const modelPorcentajes = require('./model/porcentajes');
+
+// PRODUCCIÓN - ÁREAS Y TRACKING
+const modelAreaProduction = require('./model/areasProduction'); // Áreas de producción (Corte, Tubería, etc.)
+const modelItemAreaProduction = require('./model/itemAreaProduction'); // Tracking de items por área
+
+// REMISIONES
+const modelRemision = require('./model/remision'); // Remisiones
+const modelItemRemision = require('./model/itemRemision'); // Items de remisión
 
 // PERMISOS DENTRO DE LA APLICACIÓN
 const modelPermisos = require('./model/permission');
@@ -138,6 +148,8 @@ modelUbicacion(sequelize);
 modelMovimientoInventario(sequelize); 
 modelCotizacionCompromiso(sequelize);
 modelInventarioItemFisico(sequelize);
+modelStock(sequelize);
+modelStockMove(sequelize);
 
 modelComprasCotizacion(sequelize);
 modelComprasCotizacionProyecto(sequelize);
@@ -151,6 +163,14 @@ modelNecesitaProyecto(sequelize);
 
 modelLogs(sequelize);
 modelPorcentajes(sequelize);
+
+// PRODUCCIÓN - ÁREAS Y TRACKING
+modelAreaProduction(sequelize);
+modelItemAreaProduction(sequelize);
+
+// REMISIONES
+modelRemision(sequelize);
+modelItemRemision(sequelize);
 
 // PERMISOS
 modelPermisos(sequelize);
@@ -166,7 +186,10 @@ const { user, proveedor, linea, categoria, materia, producto, extension, price, 
   permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion,
   ubicacion, movimientoInventario,
   inventarioItemFisico, inventario, cotizacion_compromiso, comprar_grupo, 
-  comprasCotizacion, ComprasCotizacionProyecto, comprasCotizacionItem, itemToProject, necesidadProyecto
+  comprasCotizacion, ComprasCotizacionProyecto, comprasCotizacionItem, itemToProject, necesidadProyecto,
+  stock, stockMove,
+  areaProduction, itemAreaProduction,
+  remision, itemRemision
 } = sequelize.models; 
 
 
@@ -279,8 +302,8 @@ proveedor.hasMany(comprasCotizacion, {
 
 comprasCotizacion.belongsTo(proveedor);
 
-
-
+ 
+ 
 
 //  RELACIONAMOS COTIZACION DE COMPRAS CON PROYECTOS
 
@@ -704,6 +727,93 @@ movimientoInventario.belongsTo(inventarioItemFisico, {
     foreignKey: 'itemFisicoId',
     as: 'itemAfectado' // Nombre para acceder a la relación (ej: movimiento.getItemAfectado())
 }); 
+// ----------------------------------------------------------
+// Relacionar `stock` y `stockMove` con `ubicacion` (bodegas)
+// - `stock.ubicacionId` indica en qué bodega/ubicación está el stock agregado
+// - `stockMove.bodegaOrigenId` y `stockMove.bodegaDestinoId` indican traslado entre bodegas
+// ----------------------------------------------------------
+// Ubicación <-> Stock
+ubicacion.hasMany(stock, {
+  foreignKey: 'ubicacionId',
+  onDelete: 'SET NULL'
+});
+stock.belongsTo(ubicacion, { foreignKey: 'ubicacionId' });
+
+// Ubicación <-> StockMove (origen / destino)
+ubicacion.hasMany(stockMove, {
+  foreignKey: 'bodegaOrigenId',
+  as: 'stockMovesOrigen',
+  onDelete: 'SET NULL'
+});
+ubicacion.hasMany(stockMove, {
+  foreignKey: 'bodegaDestinoId',
+  as: 'stockMovesDestino',
+  onDelete: 'SET NULL' 
+});  
+stockMove.belongsTo(ubicacion, { foreignKey: 'bodegaOrigenId', as: 'origen' });
+stockMove.belongsTo(ubicacion, { foreignKey: 'bodegaDestinoId', as: 'destino' });
+// -----------------------------------------
+// STOCK (tabla agregada) - Relacionamientos
+// -----------------------------------------
+// stock: tabla agregada para mantener agregados/visiones rápidas de stock por item
+// - Puede referenciar producto, materia o kit según corresponda (solo una por registro normalmente)
+// - Campos existentes: cantidad, medida, tipo, state, limit
+
+// Producto <-> Stock
+producto.hasMany(stock, {
+  foreignKey: 'productoId',
+  onDelete: 'CASCADE'
+}); 
+stock.belongsTo(producto, { foreignKey: 'productoId' });
+
+// Materia Prima <-> Stock
+materia.hasMany(stock, {
+  foreignKey: 'materiumId',
+  onDelete: 'CASCADE'
+});
+stock.belongsTo(materia, { foreignKey: 'materiumId' });
+
+// Kit <-> Stock
+kit.hasMany(stock, { 
+  foreignKey: 'kitId',
+  onDelete: 'CASCADE'
+});
+stock.belongsTo(kit, { foreignKey: 'kitId' });
+
+// -----------------------------------------
+// STOCK MOVE (historial de movimientos de stock)
+// -----------------------------------------
+// stockMove: registra movimientos de stock a nivel agregado (referencia a OC, producto, materia o kit)
+// - Relacionado con comprasCotizacion (orden de compra), materia, producto y kit
+
+// Orden de compra (ComprasCotizacion) <-> StockMove
+comprasCotizacion.hasMany(stockMove, {
+  foreignKey: 'comprasCotizacionId',
+  onDelete: 'SET NULL'
+});
+stockMove.belongsTo(comprasCotizacion, { foreignKey: 'comprasCotizacionId' });
+
+// Materia Prima <-> StockMove
+materia.hasMany(stockMove, {
+  foreignKey: 'materiumId',
+  onDelete: 'SET NULL'
+});
+stockMove.belongsTo(materia, { foreignKey: 'materiumId' });
+
+// Producto <-> StockMove
+producto.hasMany(stockMove, {
+  foreignKey: 'productoId',
+  onDelete: 'SET NULL'
+});
+stockMove.belongsTo(producto, { foreignKey: 'productoId' });
+
+// Kit <-> StockMove
+kit.hasMany(stockMove, {
+  foreignKey: 'kitId',
+  onDelete: 'SET NULL'
+});
+stockMove.belongsTo(kit, { foreignKey: 'kitId' });
+
 
 
 ubicacion.hasMany(inventario, {
@@ -785,6 +895,125 @@ ubicacion.hasMany(cotizacion_compromiso, {
 });
 
 cotizacion_compromiso.belongsTo(ubicacion);
+  
+// ----------------------------------------------------------
+// PRODUCCIÓN - ÁREAS Y TRACKING DE ITEMS
+// ----------------------------------------------------------
+// Tracking del flujo de producción: qué items de qué proyectos
+// han pasado por qué áreas de producción (Corte, Tubería, etc.)
+
+// AreaProduction: Catálogo de áreas (Corte, Tubería, Ensamble, etc.)
+// ItemAreaProduction: Registro de tracking por área
+
+// ItemAreaProduction <-> NecesidadProyecto
+// Cada registro de tracking pertenece a una necesidad de proyecto específica
+necesidadProyecto.hasMany(itemAreaProduction, {
+  foreignKey: 'necesidadProyectoId',
+  onDelete: 'CASCADE'
+});
+itemAreaProduction.belongsTo(necesidadProyecto, { 
+  foreignKey: 'necesidadProyectoId'  
+});
+
+// Requisición 
+requisicion.hasMany(itemAreaProduction, {
+  foreignKey: 'requisicionId',
+  onDelete: 'CASCADE'
+});
+itemAreaProduction.belongsTo(requisicion, { 
+  foreignKey: 'requisicionId' 
+});
+
+// ItemAreaProduction <-> AreaProduction
+// Cada registro de tracking pertenece a un área específica
+areaProduction.hasMany(itemAreaProduction, {
+  foreignKey: 'areaProductionId',
+  onDelete: 'CASCADE'
+});
+itemAreaProduction.belongsTo(areaProduction, { 
+  foreignKey: 'areaProductionId' 
+});
+
+// ItemAreaProduction <-> Kit (opcional, para acceso directo)
+kit.hasMany(itemAreaProduction, {
+  foreignKey: 'kitId',
+  onDelete: 'CASCADE'
+});
+itemAreaProduction.belongsTo(kit, { 
+  foreignKey: 'kitId' 
+});
+
+// ItemAreaProduction <-> Producto (opcional, para acceso directo)
+producto.hasMany(itemAreaProduction, {
+  foreignKey: 'productoId',
+  onDelete: 'CASCADE'
+});
+itemAreaProduction.belongsTo(producto, { 
+  foreignKey: 'productoId' 
+});
+
+// ----------------------------------------------------------
+// REMISIONES - SISTEMA DE DESPACHO
+// ----------------------------------------------------------
+// Remision: Documento de despacho para un proyecto
+// ItemRemision: Items incluidos en la remisión
+
+// Remision <-> Requisicion
+// Una remisión pertenece a una requisición/proyecto
+requisicion.hasMany(remision, {
+  foreignKey: 'requisicionId',
+  onDelete: 'CASCADE'
+});
+remision.belongsTo(requisicion, { 
+  foreignKey: 'requisicionId' 
+});
+
+// Remision <-> User (quien creó la remisión)
+user.hasMany(remision, {
+  foreignKey: 'usuarioId',
+  onDelete: 'SET NULL'
+});
+remision.belongsTo(user, { 
+  foreignKey: 'usuarioId' 
+});
+
+// ItemRemision <-> Remision
+// Cada item pertenece a una remisión
+remision.hasMany(itemRemision, {
+  foreignKey: 'remisionId',
+  onDelete: 'CASCADE'
+});
+itemRemision.belongsTo(remision, { 
+  foreignKey: 'remisionId' 
+});
+
+// ItemRemision <-> NecesidadProyecto
+// Cada item de remisión está atado a una necesidad del proyecto
+necesidadProyecto.hasMany(itemRemision, {
+  foreignKey: 'necesidadProyectoId',
+  onDelete: 'CASCADE'
+});
+itemRemision.belongsTo(necesidadProyecto, { 
+  foreignKey: 'necesidadProyectoId' 
+});
+
+// ItemRemision <-> Kit (opcional, para acceso directo)
+kit.hasMany(itemRemision, {
+  foreignKey: 'kitId',
+  onDelete: 'CASCADE'
+});
+itemRemision.belongsTo(kit, { 
+  foreignKey: 'kitId' 
+});
+
+// ItemRemision <-> Producto (opcional, para acceso directo)
+producto.hasMany(itemRemision, {
+  foreignKey: 'productoId',
+  onDelete: 'CASCADE'
+});
+itemRemision.belongsTo(producto, { 
+  foreignKey: 'productoId' 
+});
 
 // Exportamos.
 module.exports = {  

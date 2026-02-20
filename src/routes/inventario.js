@@ -1,5 +1,5 @@
 const express = require('express');
-const { newBodega, registrarMovimientos, nuevoCompromiso, addMtToBodega, addPTToBodega, getInvetarioMateriaPrima, getBodegas, getBodegaItems, getMovimientosBodega, searchMPForInventario, getAllInventarioId, getMovimientosMateriaBodega, getMovimientosItemProyectos, getCotizacionConCompromisos, getOneCotizacionConCompromisos, searchPTForInventario, getAllInventarioIdProducto, getMovimientosProductosBodega, getItemOverviewByBodegaController, listarItemsController, getItemsConMenosStockController, getItemsConMasMovimientoController, getItemsConCompromisoNegativoController, sacaKitBodegaEnProceso } = require('../controllers/almacen');
+const { newBodega, registrarMovimientos, nuevoCompromiso, addMtToBodega, addPTToBodega, getInvetarioMateriaPrima, getBodegas, getBodegaItems, getMovimientosBodega, searchMPForInventario, getAllInventarioId, getMovimientosMateriaBodega, getMovimientosItemProyectos, getCotizacionConCompromisos, getOneCotizacionConCompromisos, searchPTForInventario, getAllInventarioIdProducto, getMovimientosProductosBodega, getItemOverviewByBodegaController, listarItemsController, getItemsConMenosStockController, getItemsConMasMovimientoController, getItemsConCompromisoNegativoController, sacaKitBodegaEnProceso, getKitMateriaPrimaStock, sacaProductoBodegaEnProceso, getProductoTerminadoStock } = require('../controllers/almacen');
 const { getAllCotizacionsComprasAlmacen, getOrdenDeCompraAlmacen } = require('../controllers/requisicionController');
 const { registrarMovimientoAlmacen } = require('../controllers/services/inventarioServices');
 const router = express.Router();
@@ -78,6 +78,15 @@ router.route('/get/plus/item/')
      
 router.route('/remove/kit/materiaBodega/')
     .get(sacaKitBodegaEnProceso)
+
+router.route('/remove/producto/bodega/')
+    .get(sacaProductoBodegaEnProceso)
+
+router.route('/get/kit/materia-prima-stock/')
+    .get(getKitMateriaPrimaStock)
+    
+router.route('/get/producto-terminado-stock/')
+    .get(getProductoTerminadoStock)
     
 // VER ITEMS EN BODEGA
 router.route('/get/plus/bodegas')

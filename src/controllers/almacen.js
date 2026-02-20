@@ -1,5 +1,5 @@
 const express = require('express');
-const { ubicacion, client, inventario, producto, requisicion, itemKit, materia, extension, kit, movimientoInventario, necesidadProyecto, cotizacion_compromiso, priceKit, productPrice, cotizacion, db: sequelize } = require('../db/db');
+const { ubicacion, client, inventario, producto, requisicion, itemKit, materia, extension, kit, movimientoInventario, necesidadProyecto, cotizacion_compromiso, priceKit, productPrice, cotizacion, inventarioItemFisico, comprasCotizacionItem, itemToProject, db: sequelize } = require('../db/db');
 const { Op, QueryTypes  } = require('sequelize');
 const dayjs = require('dayjs');
 const { validateEmailService } = require('./services/userServices');
@@ -234,6 +234,299 @@ const getItemsConCompromisoNegativoController = async (req, res) => {
 
 
 
+// Obtener información de stock disponible para un producto terminado
+// Esta función muestra cuánto producto terminado hay disponible en bodega 5 (en proceso)
+// Para producto terminado: Bodega origen = 2, Bodega en proceso = 5
+const getProductoTerminadoStock = async (req, res) => {
+    try {
+        const { productoId, cantidad = 1, ubicacionId = 5 } = req.query;
+        
+        // Validaciones
+        if (!productoId) {
+            return res.status(400).json({ msg: 'productoId es requerido' });
+        }
+
+        // Obtener el producto terminado
+        const searchProducto = await producto.findByPk(productoId, {
+            attributes: ['id', 'item', 'unidad', 'medida']
+        });
+
+        if (!searchProducto) {
+            return res.status(404).json({ msg: 'Producto terminado no encontrado' });
+        }
+
+        const cantidadNecesaria = Number(cantidad);
+        const unidad = searchProducto.unidad || '';
+        const medida = searchProducto.medida || '';
+        const item = searchProducto.item || '';
+
+        // Obtener stock disponible en bodega 5 (en proceso) - OBLIGATORIO para producto terminado
+        const itemsDisponiblesBodega5 = await inventarioItemFisico.findAll({
+            where: {
+                productoId: Number(productoId),
+                ubicacionId: 5, // Bodega en proceso (OBLIGATORIO)
+                cantidadDisponible: { [Op.gt]: 0 }
+            },
+            attributes: ['id', 'cantidadDisponible', 'esRemanente', 'state'],
+            raw: true
+        });
+
+        // Verificar también en bodega 2 (solo para información, no para consumo)
+        const itemsDisponiblesBodega2 = await inventarioItemFisico.findAll({
+            where: {
+                productoId: Number(productoId),
+                ubicacionId: 2, // Bodega producto terminado
+                cantidadDisponible: { [Op.gt]: 0 }
+            },
+            attributes: ['id', 'cantidadDisponible'],
+            raw: true
+        });
+
+        // Calcular stock total disponible en bodega 5
+        const stockDisponibleBodega5 = itemsDisponiblesBodega5.reduce(
+            (sum, it) => sum + parseFloat(it.cantidadDisponible || 0),
+            0
+        );
+
+        const stockDisponibleBodega2 = itemsDisponiblesBodega2.reduce(
+            (sum, it) => sum + parseFloat(it.cantidadDisponible || 0),
+            0
+        );
+
+        // Calcular cuánto falta
+        const cantidadFalta = Math.max(0, cantidadNecesaria - stockDisponibleBodega5);
+        const tieneStockSuficiente = stockDisponibleBodega5 >= cantidadNecesaria;
+
+        return res.status(200).json({
+            success: true,
+            productoId: Number(productoId),
+            productoName: item,
+            cantidadSolicitada: cantidadNecesaria,
+            ubicacionId: 5,
+            nota: 'El sistema consume productos terminados desde bodega 5 (en proceso).',
+            resumen: {
+                tieneStockSuficiente,
+                cantidadNecesaria,
+                stockDisponible: stockDisponibleBodega5,
+                cantidadFalta,
+                itemsDisponibles: itemsDisponiblesBodega5.length
+            },
+            producto: {
+                productoId: Number(productoId),
+                item: item,
+                unidad: unidad,
+                medida: medida,
+                cantidadNecesaria: cantidadNecesaria,
+                stockDisponible: stockDisponibleBodega5,
+                stockDisponibleBodega2: stockDisponibleBodega2,
+                cantidadFalta: cantidadFalta,
+                tieneStockSuficiente: tieneStockSuficiente,
+                itemsDisponibles: itemsDisponiblesBodega5.length,
+                necesitaTransferir: !tieneStockSuficiente && stockDisponibleBodega2 > 0
+            }
+        });
+
+    } catch (err) {
+        console.error('Error en getProductoTerminadoStock:', err);
+        return res.status(500).json({
+            success: false,
+            msg: 'Error al obtener información de producto terminado',
+            error: err.message
+        });
+    }
+};
+
+// Obtener información de materia prima necesaria y stock disponible para un kit
+// Esta función muestra qué materia prima necesita un kit y cuánta hay disponible
+// IMPORTANTE: El consumo se hace por CANTIDADES PARCIALES (mt2, mt) o enteras (unidades)
+// - mt2 y mt: se pueden consumir parciales (ej: 4.5 mt2 de una lámina de 6 mt2)
+// - unidades, kg, etc.: se consumen enteras según la lógica del modelo
+const getKitMateriaPrimaStock = async (req, res) => {
+    try {
+        const { kitId, cantidad = 1, ubicacionId = 4 } = req.query;
+        
+        // Validaciones
+        if (!kitId) {
+            return res.status(400).json({ msg: 'kitId es requerido' });
+        }
+
+        // Obtener el kit con sus items
+        const searchKit = await kit.findByPk(kitId, {
+            include: [{
+                model: itemKit,
+                include: [{
+                    model: materia
+                }]
+            }]
+        });
+
+        if (!searchKit) {
+            return res.status(404).json({ msg: 'Kit no encontrado' });
+        }
+
+        // Consolidar la materia prima necesaria
+        // Esto agrupa la materia prima del kit multiplicada por la cantidad solicitada
+        const consolidado = consolidarKit(searchKit, Number(cantidad));
+
+        // Para cada materia prima, obtener el stock disponible en bodega 4 (en proceso)
+        const materiaConStock = await Promise.all(
+            consolidado.map(async (item) => {
+                // Obtener stock disponible en bodega 4 (en proceso) - OBLIGATORIO para materia prima
+                const itemsDisponiblesBodega4 = await inventarioItemFisico.findAll({
+                    where: {
+                        materiumId: item.materiaId,
+                        ubicacionId: 4, // Bodega en proceso (OBLIGATORIO)
+                        cantidadDisponible: { [Op.gt]: 0 }
+                    },
+                    attributes: ['id', 'cantidadDisponible', 'esRemanente', 'state'],
+                    raw: true
+                });
+
+                // Verificar también en bodega 1 (solo para información, no para consumo)
+                const itemsDisponiblesBodega1 = await inventarioItemFisico.findAll({
+                    where: {
+                        materiumId: item.materiaId,
+                        ubicacionId: 1, // Bodega materia prima
+                        cantidadDisponible: { [Op.gt]: 0 }
+                    },
+                    attributes: ['id', 'cantidadDisponible'],
+                    raw: true
+                });
+
+                // Calcular stock total disponible en bodega 4 (suma de todas las piezas disponibles)
+                // NOTA: El consumo se hace por cantidades parciales, así que si hay:
+                // - 1 lámina de 3 mt2 y necesitas 4.5 mt2: se consume la lámina completa (3 mt2) 
+                //   y se busca otra para los 1.5 mt2 restantes
+                // - 1 varilla de 6 mt y necesitas 2 mt: se consume 2 mt y quedan 4 mt como remanente
+                const stockDisponibleBodega4 = itemsDisponiblesBodega4.reduce(
+                    (sum, it) => sum + parseFloat(it.cantidadDisponible || 0),
+                    0
+                );
+
+                const stockDisponibleBodega1 = itemsDisponiblesBodega1.reduce(
+                    (sum, it) => sum + parseFloat(it.cantidadDisponible || 0),
+                    0
+                );
+
+                // Calcular cuánto falta
+                const cantidadNecesaria = parseFloat(item.totalCantidad || 0);
+                const cantidadFalta = Math.max(0, cantidadNecesaria - stockDisponibleBodega4);
+                const tieneStockSuficiente = stockDisponibleBodega4 >= cantidadNecesaria;
+
+                return {
+                    materiaId: item.materiaId,
+                    item: item.item,
+                    unidad: item.unidad,
+                    medida: item.medida,
+                    cantidadPorKit: item.cantidadPorKit, // Cantidad necesaria para 1 kit
+                    cantidadNecesaria: cantidadNecesaria, // Cantidad total necesaria
+                    stockDisponible: stockDisponibleBodega4, // Stock en bodega 4 (en proceso)
+                    stockDisponibleBodega1: stockDisponibleBodega1, // Stock en bodega 1 (solo info)
+                    cantidadFalta: cantidadFalta,
+                    tieneStockSuficiente: tieneStockSuficiente,
+                    itemsDisponibles: itemsDisponiblesBodega4.length, // Número de piezas disponibles en bodega 4
+                    necesitaTransferir: !tieneStockSuficiente && stockDisponibleBodega1 > 0, // Si falta pero hay en bodega 1
+                    detalles: item.detalles
+                };
+            })
+        );
+
+        // Resumen general
+        const tieneTodoElStock = materiaConStock.every(m => m.tieneStockSuficiente);
+        const totalMaterias = materiaConStock.length;
+        const materiasConStockSuficiente = materiaConStock.filter(m => m.tieneStockSuficiente).length;
+
+        return res.status(200).json({
+            success: true,
+            kitId: Number(kitId),
+            kitName: searchKit.name,
+            cantidadKits: Number(cantidad),
+            ubicacionId: Number(ubicacionId),
+            nota: 'El sistema consume CANTIDADES EXACTAS (parciales) en mt2 y mt. Ejemplo: si necesitas 0.26 mt2 y hay una lámina de 3 mt2, se consume exactamente 0.26 mt2 y quedan 2.74 mt2 como remanente. NO consume piezas completas, consume la cantidad exacta necesaria.',
+            resumen: {
+                tieneTodoElStock,
+                totalMaterias,
+                materiasConStockSuficiente,
+                materiasConFalta: totalMaterias - materiasConStockSuficiente
+            },
+            materiaPrima: materiaConStock
+        });
+
+    } catch (err) {
+        console.error('Error en getKitMateriaPrimaStock:', err);
+        return res.status(500).json({
+            success: false,
+            msg: 'Error al obtener información de materia prima',
+            error: err.message
+        });
+    }
+};
+
+// SACAR DE LA BODEGA EN PROCESO - PRODUCTO TERMINADO
+const sacaProductoBodegaEnProceso = async (req, res) => {
+    try{
+        // Recibimos producto y proyecto por query
+        const { requisicionId, productoId, cantidad} = req.query;
+        // Validamos datos
+        if(!requisicionId || !productoId) return res.status(400).json({msg: 'Los parámetros no son validos'});
+        
+        console.log('sacaProductoBodegaEnProceso - Iniciando:', { requisicionId, productoId, cantidad });
+        
+        const searchProducto = await producto.findByPk(productoId);
+
+        if(!searchProducto) {
+            console.log('Producto no encontrado:', productoId);
+            return res.status(404).json({msg: 'No hemos encontrado este producto'});
+        }
+        
+        try {
+            // IMPORTANTE: El producto debe estar en bodega 5 (en proceso) para consumirlo
+            // Esta función consume producto de la bodega en proceso (5) 
+            // El producto fue transferido previamente desde bodega 2 a bodega 5
+            console.log('Buscando producto en bodega 5 (en proceso)');
+            const resultado = await sacarDelInventario({
+                productoId: Number(productoId),
+                materiumId: null,
+                cantidadSolicitada: Number(cantidad),
+                ubicacionOrigenId: 5, // Bodega en proceso (donde está el producto disponible)
+                refDoc: `SALIDA_REQUIS_${requisicionId}_PRODUCTO_${productoId}`,
+                cotizacionId: null,
+                usuarioId: req.user ? req.user.id : null,
+                ordenarPor: 'DESC'
+            });
+        
+            console.log('Producto consumido exitosamente:', resultado);
+
+            const updateCompromiso = await necesidadProyecto.findOne({
+                where: {
+                    requisicionId: requisicionId,
+                    productoId: productoId
+                }
+            })
+
+            if(!updateCompromiso){
+                console.log('no encontramos el compromiso')
+            } else {
+                console.log('si lo encontramos')
+                let cantidadHoy = Number(Number(cantidad) + Number(updateCompromiso.cantidadEntregada))
+
+                updateCompromiso.cantidadEntregada = Number(cantidadHoy)
+                updateCompromiso.estado = cantidadHoy <= 0 ? 'reservado' : cantidadHoy > 0 && cantidadHoy < updateCompromiso.cantidadComprometida ? 'parcial' : 'completo' 
+
+                await updateCompromiso.save()
+            }
+
+            return res.status(200).json({ ok: true, resultado });
+        } catch (errSalida) {
+            console.log(errSalida)
+            return res.status(400).json({ ok: false, msg: errSalida.message });
+        }
+    } catch (err) {
+        console.error('Error en sacaProductoBodegaEnProceso:', err);
+        return res.status(500).json({ ok: false, msg: err.message });
+    }
+};
+
 // SACAR DE LA BODEGA EN PROCESO - KIT
 const sacaKitBodegaEnProceso = async (req, res) => {
     try{
@@ -243,7 +536,8 @@ const sacaKitBodegaEnProceso = async (req, res) => {
         if(!requisicionId || !kitId) return res.status(400).json({msg: 'Los parámetros no son validos'});
         // Caso contrario, avanzamos
         
-        console.log('llego acá')
+        console.log('sacaKitBodegaEnProceso - Iniciando:', { requisicionId, kitId, cantidad });
+        
         const searchKit = await kit.findByPk(kitId, {
             include:[{
                 model: itemKit,
@@ -253,19 +547,29 @@ const sacaKitBodegaEnProceso = async (req, res) => {
             }]
         })
 
-        if(!searchKit) return res.status(404).json({msg: 'No hemos encontrado esto'});
+        if(!searchKit) {
+            console.log('Kit no encontrado:', kitId);
+            return res.status(404).json({msg: 'No hemos encontrado esto'});
+        }
+        
         // Caso contrario. Ejecutamos
         const consolidado = consolidarKit(searchKit, Number(cantidad));
-
+        console.log('Consolidado de materia prima:', consolidado);
 
         try {
+            // IMPORTANTE: El material debe estar en bodega 4 (en proceso) para consumirlo
+            // Esta función consume material de la bodega en proceso (4) para producir el kit
+            // El material fue transferido previamente desde bodega 1 a bodega 4
+            console.log('Buscando material en bodega 4 (en proceso)');
             const resultado = await sacaMateriasConsolidadoTransactional(consolidado, {
-                ubicacionOrigenId: 1,
+                ubicacionOrigenId: 4, // Bodega en proceso (donde está el material disponible)
                 refDoc: `SALIDA_REQUIS_${requisicionId}_KIT_${kitId}`,
                 cotizacionId: searchKit.cotizacionId ?? null,
                 usuarioId: req.user ? req.user.id : null,
                 ordenarPor: 'DESC'
         });
+        
+        console.log('Material consumido exitosamente:', resultado);
 
         console.log('paso más')
 
@@ -601,35 +905,229 @@ const getAllInventarioId = async(req, res) => {
                 }]
             }]
         })
-        // const searchInventario = await inventario.findOne({
-        //     where: {
-        //         materiumId: itemId,
-        //         ubicacionId,
-        //     },
-        //     include:[{
-        //         model: materia
-        //     },
-        //     {
-        //         model: ubicacion,
-        //         include:[{ 
-        //             model: movimientoInventario, as: 'origen' 
-        //         },
-        //         { 
-        //             model: movimientoInventario, as: 'destino' 
-        //         }]
-        //     }
-            
-        //     ]
-        // }).catch(err => {
-        //     console.log(err);
-        //     return null;
-        // });
 
         if(!searchItemInventario) return res.status(404).json({msg: 'No hemos encontrado esto aquí'});
-        // Caso contrario, avanzamos
-        res.status(200).json(searchItemInventario);
         
-    }catch(err){
+        // 🔄 Obtener items físicos de este material en esta bodega
+        const itemsFisicos = await inventarioItemFisico.findAll({
+            where: {
+                materiumId: itemId,
+                ubicacionId: Number(ubicacionId),
+                cantidadDisponible: { [Op.gt]: 0 } // Solo items con stock disponible
+            },
+            order: [['createdAt', 'DESC']] // Items más recientes primero
+        });
+
+        // Obtener movimientos específicos de cada item físico (solo con cantidad)
+        // Nota: No cargamos movimientos por item físico aquí para evitar sobrecarga
+        const itemsFisicosConMovimientos = itemsFisicos.map(item => {
+            const itemPlain = item.get({ plain: true });
+            itemPlain.movimientos = []; // Se cargarán con paginación si se necesita
+            return itemPlain;
+        });
+
+        // Parámetros de paginación para movimientos generales
+        const pageMov = parseInt(req.query.pageMov) || 1;
+        const limitMov = parseInt(req.query.limitMov) || 20;
+        const offsetMov = (pageMov - 1) * limitMov;
+
+        // ✅ OPTIMIZACIÓN: Usar raw: true y solo campos necesarios
+        const movimientosGeneralesRaw = await movimientoInventario.findAll({
+            where: {
+                materiumId: itemId,
+                [Op.or]: [
+                    { ubicacionOrigenId: Number(ubicacionId) },
+                    { ubicacionDestinoId: Number(ubicacionId) }
+                ],
+                // Filtrar solo movimientos con cantidad (no null y > 0)
+                [Op.and]: [
+                    sequelize.literal('"cantidad" IS NOT NULL AND "cantidad" > 0')
+                ]
+            },
+            attributes: ['id', 'cantidad', 'tipoMovimiento', 'tipoProducto', 'referenciaDeDocumento', 
+                         'cotizacionId', 'ubicacionOrigenId', 'ubicacionDestinoId', 
+                         'createdAt', 'updatedAt', 'materiumId', 'productoId', 'itemFisicoId'],
+            order: [['createdAt', 'DESC']],
+            limit: limitMov,
+            offset: offsetMov,
+            raw: true // ✅ Mejor rendimiento
+        });
+
+        // ✅ OPTIMIZACIÓN: Obtener proyectos para todas las transferencias en una sola consulta
+        const movimientosGenerales = movimientosGeneralesRaw;
+        
+        // Identificar transferencias que necesitan proyectos
+        // Obtener comprasCotizacionId desde inventarioItemFisico
+        const transferenciasConItemFisico = movimientosGenerales.filter(
+            mov => mov.tipoMovimiento === 'TRANSFERENCIA' && mov.itemFisicoId
+        );
+        
+        // Si hay transferencias, obtener comprasCotizacionId desde inventarioItemFisico
+        let proyectosPorOC = {};
+        if (transferenciasConItemFisico.length > 0) {
+            const itemFisicoIds = [...new Set(transferenciasConItemFisico.map(mov => mov.itemFisicoId).filter(Boolean))];
+            
+            // Obtener comprasCotizacionId desde inventarioItemFisico
+            const itemsFisicos = await inventarioItemFisico.findAll({
+                where: { id: { [Op.in]: itemFisicoIds } },
+                attributes: ['id', 'comprasCotizacionId'],
+                raw: true
+            });
+            
+            // Mapear itemFisicoId -> comprasCotizacionId
+            const itemFisicoToOC = {};
+            itemsFisicos.forEach(item => {
+                if (item.comprasCotizacionId) {
+                    itemFisicoToOC[item.id] = item.comprasCotizacionId;
+                }
+            });
+            
+            // Agregar comprasCotizacionId a los movimientos
+            transferenciasConItemFisico.forEach(mov => {
+                if (itemFisicoToOC[mov.itemFisicoId]) {
+                    mov.comprasCotizacionId = itemFisicoToOC[mov.itemFisicoId];
+                }
+            });
+            
+            const comprasCotizacionIds = [...new Set(Object.values(itemFisicoToOC))];
+            
+            if (comprasCotizacionIds.length > 0) {
+                try {
+                    const itemsCotizacion = await comprasCotizacionItem.findAll({
+                        where: {
+                            comprasCotizacionId: { [Op.in]: comprasCotizacionIds },
+                            materiumId: itemId
+                        },
+                        include: [{
+                            model: itemToProject,
+                            attributes: ['id', 'cantidad', 'comprasCotizacionItemId'],
+                            include: [{
+                                model: requisicion,
+                                attributes: ['id', 'cotizacionId'],
+                            include: [{
+                                model: cotizacion,
+                                attributes: ['id', 'name', 'description'] // ✅ Corregido: usar 'name' y 'description' según el modelo
+                            }]
+                            }]
+                        }]
+                    });
+
+                    itemsCotizacion.forEach(item => {
+                        if (item.itemToProjects && item.itemToProjects.length > 0) {
+                            proyectosPorOC[item.comprasCotizacionId] = item.itemToProjects.map(itp => ({
+                                cotizacionId: itp.requisicion?.cotizacionId,
+                                nombreProyecto: itp.requisicion?.cotizacion?.name || `Proyecto ${itp.requisicion?.cotizacionId}`, // ✅ Corregido: usar 'name' en lugar de 'nombre'
+                                cantidadAsignada: itp.cantidad
+                            }));
+                        }
+                    });
+                } catch (error) {
+                    console.error('[getAllInventarioId] Error al obtener proyectos para transferencias:', error);
+                }
+            }
+        }
+
+        // Asignar proyectos a cada movimiento
+        movimientosGenerales.forEach(mov => {
+            if (mov.tipoMovimiento === 'TRANSFERENCIA' && mov.comprasCotizacionId && proyectosPorOC[mov.comprasCotizacionId]) {
+                const proyectos = proyectosPorOC[mov.comprasCotizacionId];
+                const cantidadTotal = proyectos.reduce((sum, p) => sum + parseFloat(p.cantidadAsignada || 0), 0);
+                
+                mov.proyectos = proyectos.map(proyecto => ({
+                    ...proyecto,
+                    cantidadProporcional: mov.cantidad && cantidadTotal > 0
+                        ? (parseFloat(proyecto.cantidadAsignada || 0) / cantidadTotal) * parseFloat(mov.cantidad)
+                        : 0
+                }));
+            } else {
+                mov.proyectos = [];
+            }
+        });
+
+        // ✅ Obtener comprasCotizacionId para ENTRADAS que tienen itemFisicoId
+        const entradasConItemFisico = movimientosGenerales.filter(
+            mov => mov.tipoMovimiento === 'ENTRADA' && mov.itemFisicoId
+        );
+        
+        let itemFisicoToOC = {};
+        if (entradasConItemFisico.length > 0) {
+            const itemFisicoIds = [...new Set(entradasConItemFisico.map(mov => mov.itemFisicoId).filter(Boolean))];
+            const itemsFisicos = await inventarioItemFisico.findAll({
+                where: { id: { [Op.in]: itemFisicoIds } },
+                attributes: ['id', 'comprasCotizacionId'],
+                raw: true
+            });
+            
+            itemsFisicos.forEach(item => {
+                if (item.comprasCotizacionId) {
+                    itemFisicoToOC[item.id] = item.comprasCotizacionId;
+                }
+            });
+            
+            // Asignar comprasCotizacionId a las ENTRADAS
+            entradasConItemFisico.forEach(mov => {
+                if (itemFisicoToOC[mov.itemFisicoId]) {
+                    mov.comprasCotizacionId = itemFisicoToOC[mov.itemFisicoId];
+                }
+            });
+        }
+
+        // ✅ Obtener nombres de bodegas de forma optimizada (solo el campo nombre de la tabla ubicacion)
+        const ubicacionIds = [...new Set([
+            ...movimientosGenerales.map(m => m.ubicacionOrigenId).filter(Boolean),
+            ...movimientosGenerales.map(m => m.ubicacionDestinoId).filter(Boolean)
+        ])];
+        
+        let ubicacionesMap = {};
+        if (ubicacionIds.length > 0) {
+            const ubicaciones = await ubicacion.findAll({
+                where: { id: { [Op.in]: ubicacionIds } },
+                attributes: ['id', 'nombre'],
+                raw: true
+            });
+            
+            ubicaciones.forEach(ub => {
+                ubicacionesMap[ub.id] = ub.nombre || null;
+            });
+        }
+        
+        // Asignar nombres de bodega a cada movimiento (solo el nombre de la tabla ubicacion)
+        movimientosGenerales.forEach(mov => {
+            mov.ubicacionOrigenNombre = mov.ubicacionOrigenId ? (ubicacionesMap[mov.ubicacionOrigenId] || null) : null;
+            mov.ubicacionDestinoNombre = mov.ubicacionDestinoId ? (ubicacionesMap[mov.ubicacionDestinoId] || null) : null;
+        });
+
+        // ✅ OPTIMIZACIÓN: Count más rápido
+        const totalMovimientos = await movimientoInventario.count({
+            where: {
+                materiumId: itemId,
+                [Op.or]: [
+                    { ubicacionOrigenId: Number(ubicacionId) },
+                    { ubicacionDestinoId: Number(ubicacionId) }
+                ],
+                // Filtrar solo movimientos con cantidad (no null y > 0)
+                [Op.and]: [
+                    sequelize.literal('"cantidad" IS NOT NULL AND "cantidad" > 0')
+                ]
+            },
+            col: 'id' // ✅ Especificar columna para count más rápido
+        });
+
+        // Convertir a objeto plano para agregar los datos nuevos
+        const resultado = searchItemInventario.get({ plain: true });
+        resultado.itemsFisicos = itemsFisicosConMovimientos;
+        resultado.movimientos = movimientosGenerales;
+        resultado.paginacionMovimientos = {
+            page: pageMov,
+            limit: limitMov,
+            total: totalMovimientos,
+            totalPages: Math.ceil(totalMovimientos / limitMov)
+        };
+
+        // Caso contrario, avanzamos
+        res.status(200).json(resultado);
+        
+    } catch(err) {
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
@@ -657,33 +1155,221 @@ const getAllInventarioIdProducto = async(req, res) => {
                 }]
             }]
         })
-        // const searchInventario = await inventario.findOne({
-        //     where: {
-        //         materiumId: itemId,
-        //         ubicacionId,
-        //     },
-        //     include:[{
-        //         model: materia
-        //     },
-        //     {
-        //         model: ubicacion,
-        //         include:[{ 
-        //             model: movimientoInventario, as: 'origen' 
-        //         },
-        //         { 
-        //             model: movimientoInventario, as: 'destino' 
-        //         }]
-        //     }
-            
-        //     ]
-        // }).catch(err => {
-        //     console.log(err);
-        //     return null;
-        // });
 
         if(!searchItemInventario) return res.status(404).json({msg: 'No hemos encontrado esto aquí'});
+        
+        // 🔄 Obtener items físicos de este producto en esta bodega
+        const itemsFisicos = await inventarioItemFisico.findAll({
+            where: {
+                productoId: itemId,
+                ubicacionId: Number(ubicacionId),
+                cantidadDisponible: { [Op.gt]: 0 } // Solo items con stock disponible
+            },
+            order: [['createdAt', 'DESC']] // Items más recientes primero
+        });
+
+        // Obtener movimientos específicos de cada item físico (solo con cantidad)
+        // Nota: No cargamos movimientos por item físico aquí para evitar sobrecarga
+        const itemsFisicosConMovimientos = itemsFisicos.map(item => {
+            const itemPlain = item.get({ plain: true });
+            itemPlain.movimientos = []; // Se cargarán con paginación si se necesita
+            return itemPlain;
+        });
+
+        // Parámetros de paginación para movimientos generales
+        const pageMov = parseInt(req.query.pageMov) || 1;
+        const limitMov = parseInt(req.query.limitMov) || 20;
+        const offsetMov = (pageMov - 1) * limitMov;
+
+        // ✅ OPTIMIZACIÓN: Usar raw: true y solo campos necesarios
+        const movimientosGeneralesRaw = await movimientoInventario.findAll({
+            where: {
+                productoId: itemId,
+                [Op.or]: [
+                    { ubicacionOrigenId: Number(ubicacionId) },
+                    { ubicacionDestinoId: Number(ubicacionId) }
+                ],
+                // Filtrar solo movimientos con cantidad (no null y > 0)
+                [Op.and]: [
+                    sequelize.literal('"cantidad" IS NOT NULL AND "cantidad" > 0')
+                ]
+            },
+            attributes: ['id', 'cantidad', 'tipoMovimiento', 'tipoProducto', 'referenciaDeDocumento', 
+                         'cotizacionId', 'ubicacionOrigenId', 'ubicacionDestinoId', 
+                         'createdAt', 'updatedAt', 'materiumId', 'productoId', 'itemFisicoId'],
+            order: [['createdAt', 'DESC']],
+            limit: limitMov,
+            offset: offsetMov,
+            raw: true // ✅ Mejor rendimiento
+        });
+
+        // ✅ OPTIMIZACIÓN: Obtener proyectos para todas las transferencias en una sola consulta
+        const movimientosGenerales = movimientosGeneralesRaw;
+        
+        // Identificar transferencias que necesitan proyectos
+        // Obtener comprasCotizacionId desde inventarioItemFisico
+        const transferenciasConItemFisico = movimientosGenerales.filter(
+            mov => mov.tipoMovimiento === 'TRANSFERENCIA' && mov.itemFisicoId
+        );
+        
+        // Si hay transferencias, obtener comprasCotizacionId desde inventarioItemFisico
+        let proyectosPorOC = {};
+        if (transferenciasConItemFisico.length > 0) {
+            const itemFisicoIds = [...new Set(transferenciasConItemFisico.map(mov => mov.itemFisicoId).filter(Boolean))];
+            
+            // Obtener comprasCotizacionId desde inventarioItemFisico
+            const itemsFisicos = await inventarioItemFisico.findAll({
+                where: { id: { [Op.in]: itemFisicoIds } },
+                attributes: ['id', 'comprasCotizacionId'],
+                raw: true
+            });
+            
+            // Mapear itemFisicoId -> comprasCotizacionId
+            const itemFisicoToOC = {};
+            itemsFisicos.forEach(item => {
+                if (item.comprasCotizacionId) {
+                    itemFisicoToOC[item.id] = item.comprasCotizacionId;
+                }
+            });
+            
+            // Agregar comprasCotizacionId a los movimientos
+            transferenciasConItemFisico.forEach(mov => {
+                if (itemFisicoToOC[mov.itemFisicoId]) {
+                    mov.comprasCotizacionId = itemFisicoToOC[mov.itemFisicoId];
+                }
+            });
+            
+            const comprasCotizacionIds = [...new Set(Object.values(itemFisicoToOC))];
+            
+            if (comprasCotizacionIds.length > 0) {
+                try {
+                    const itemsCotizacion = await comprasCotizacionItem.findAll({
+                        where: {
+                            comprasCotizacionId: { [Op.in]: comprasCotizacionIds },
+                            productoId: itemId
+                        },
+                        include: [{
+                            model: itemToProject,
+                            attributes: ['id', 'cantidad', 'comprasCotizacionItemId'],
+                            include: [{
+                                model: requisicion,
+                                attributes: ['id', 'cotizacionId'],
+                            include: [{
+                                model: cotizacion,
+                                attributes: ['id', 'name', 'description'] // ✅ Corregido: usar 'name' y 'description' según el modelo
+                            }]
+                            }]
+                        }]
+                    });
+
+                itemsCotizacion.forEach(item => {
+                    if (item.itemToProjects && item.itemToProjects.length > 0) {
+                        proyectosPorOC[item.comprasCotizacionId] = item.itemToProjects.map(itp => ({
+                            cotizacionId: itp.requisicion?.cotizacionId,
+                            nombreProyecto: itp.requisicion?.cotizacion?.name || `Proyecto ${itp.requisicion?.cotizacionId}`, // ✅ Corregido: usar 'name' en lugar de 'nombre'
+                            cantidadAsignada: itp.cantidad
+                        }));
+                    }
+                });
+                } catch (error) {
+                    console.error('[getAllInventarioIdProducto] Error al obtener proyectos para transferencias:', error);
+                }
+            }
+        }
+
+        // Asignar proyectos a cada movimiento
+        movimientosGenerales.forEach(mov => {
+            if (mov.tipoMovimiento === 'TRANSFERENCIA' && mov.comprasCotizacionId && proyectosPorOC[mov.comprasCotizacionId]) {
+                const proyectos = proyectosPorOC[mov.comprasCotizacionId];
+                const cantidadTotal = proyectos.reduce((sum, p) => sum + parseFloat(p.cantidadAsignada || 0), 0);
+                
+                mov.proyectos = proyectos.map(proyecto => ({
+                    ...proyecto,
+                    cantidadProporcional: mov.cantidad && cantidadTotal > 0
+                        ? (parseFloat(proyecto.cantidadAsignada || 0) / cantidadTotal) * parseFloat(mov.cantidad)
+                        : 0
+                }));
+            } else {
+                mov.proyectos = [];
+            }
+        });
+
+        // ✅ Obtener comprasCotizacionId para ENTRADAS que tienen itemFisicoId
+        const entradasConItemFisico = movimientosGenerales.filter(
+            mov => mov.tipoMovimiento === 'ENTRADA' && mov.itemFisicoId
+        );
+        
+        let itemFisicoToOC = {};
+        if (entradasConItemFisico.length > 0) {
+            const itemFisicoIds = [...new Set(entradasConItemFisico.map(mov => mov.itemFisicoId).filter(Boolean))];
+            const itemsFisicos = await inventarioItemFisico.findAll({
+                where: { id: { [Op.in]: itemFisicoIds } },
+                attributes: ['id', 'comprasCotizacionId'],
+                raw: true
+            });
+            
+            itemsFisicos.forEach(item => {
+                if (item.comprasCotizacionId) {
+                    itemFisicoToOC[item.id] = item.comprasCotizacionId;
+                }
+            });
+            
+            // Asignar comprasCotizacionId a las ENTRADAS
+            entradasConItemFisico.forEach(mov => {
+                if (itemFisicoToOC[mov.itemFisicoId]) {
+                    mov.comprasCotizacionId = itemFisicoToOC[mov.itemFisicoId];
+                }
+            });
+        }
+
+        // ✅ Obtener nombres de bodegas de forma optimizada (solo el campo nombre de la tabla ubicacion)
+        const ubicacionIds = [...new Set([
+            ...movimientosGenerales.map(m => m.ubicacionOrigenId).filter(Boolean),
+            ...movimientosGenerales.map(m => m.ubicacionDestinoId).filter(Boolean)
+        ])];
+        
+        let ubicacionesMap = {};
+        if (ubicacionIds.length > 0) {
+            const ubicaciones = await ubicacion.findAll({
+                where: { id: { [Op.in]: ubicacionIds } },
+                attributes: ['id', 'nombre'],
+                raw: true
+            });
+            
+            ubicaciones.forEach(ub => {
+                ubicacionesMap[ub.id] = ub.nombre || null;
+            });
+        }
+        
+        // Asignar nombres de bodega a cada movimiento (solo el nombre de la tabla ubicacion)
+        movimientosGenerales.forEach(mov => {
+            mov.ubicacionOrigenNombre = mov.ubicacionOrigenId ? (ubicacionesMap[mov.ubicacionOrigenId] || null) : null;
+            mov.ubicacionDestinoNombre = mov.ubicacionDestinoId ? (ubicacionesMap[mov.ubicacionDestinoId] || null) : null;
+        });
+
+        // ✅ OPTIMIZACIÓN: Count más rápido
+        const totalMovimientos = await movimientoInventario.count({
+            where: {
+                productoId: itemId,
+                [Op.or]: [
+                    { ubicacionOrigenId: Number(ubicacionId) },
+                    { ubicacionDestinoId: Number(ubicacionId) }
+                ],
+                // Filtrar solo movimientos con cantidad (no null y > 0)
+                [Op.and]: [
+                    sequelize.literal('"cantidad" IS NOT NULL AND "cantidad" > 0')
+                ]
+            },
+            col: 'id' // ✅ Especificar columna para count más rápido
+        });
+
+        // Convertir a objeto plano para agregar los datos nuevos
+        const resultado = searchItemInventario.get({ plain: true });
+        resultado.itemsFisicos = itemsFisicosConMovimientos;
+        resultado.movimientos = movimientosGenerales;
+
         // Caso contrario, avanzamos
-        res.status(200).json(searchItemInventario);
+        res.status(200).json(resultado);
         
     }catch(err){
         console.log(err);
@@ -1056,11 +1742,16 @@ const getItemOverviewByBodegaController = async (req, res) => {
       return res.status(400).json({ msg: 'Enviar materiumId o productoId y ubicacionId' });
     }
 
+    const pageMovimientos = parseInt(req.query.pageMov) || 1;
+    const limitMovimientos = parseInt(req.query.limitMov) || 20;
+
     const overview = await getItemOverviewByBodega({
       materiumId: materiumId ? Number(materiumId) : null,
       productoId: productoId ? Number(productoId) : null,
       ubicacionId: Number(ubicacionId),
-      limitSample: limit ? Number(limit) : 100
+      limitSample: limit ? Number(limit) : 100,
+      pageMovimientos,
+      limitMovimientos
     });
 
     return res.status(200).json(overview);
@@ -1308,4 +1999,7 @@ module.exports = {
     getItemsConMasMovimientoController, // Ver item con más movimientos
     getItemsConCompromisoNegativoController, // Negativos
     sacaKitBodegaEnProceso, // SACAR KIT DE BODEGA EN PROCESO
+    sacaProductoBodegaEnProceso, // SACAR PRODUCTO TERMINADO DE BODEGA EN PROCESO
+    getProductoTerminadoStock, // OBTENER STOCK DE PRODUCTO TERMINADO
+    getKitMateriaPrimaStock, // Obtener materia prima necesaria y stock disponible para un kit
 }  

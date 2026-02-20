@@ -1,10 +1,10 @@
 const express = require('express');
 const { materia, producto, productPrice, productoCotizacion, cotizacion, serviceCotizacion, service, client, user, armado, kitCotizacion, armadoKits, areaCotizacion, armadoCotizacion, proveedor, extension, price, kit, itemKit, linea, categoria, requisicion, itemRequisicion, 
-    comprasCotizacion,  ComprasCotizacionProyecto, comprasCotizacionItem, cotizacion_compromiso, itemToProject, necesidadProyecto, priceKit, db, Op} = require('../db/db');
+    comprasCotizacion, areaProduction, itemAreaProduction, ComprasCotizacionProyecto, comprasCotizacionItem, cotizacion_compromiso, itemToProject, necesidadProyecto, priceKit, db, Op} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 const { default: axios } = require('axios');
-const { nuevaCompra, addItemToCotizacion, updateItems, giveNecesidadToProject } = require('./services/requsicionService');
+const { nuevaCompra, addItemToCotizacion, updateItems, giveNecesidadToProject, getRequisicionDetallada, addProductoRequisicion, addMateriaRequisicion, getNecesidadProjecto } = require('./services/requsicionService');
 const dayjs = require('dayjs');
 const { render } = require('ejs');
 const { createCompromiso } = require('./services/inventarioServices');
@@ -15,7 +15,7 @@ const getAllRequisiciones = async (req, res) => {
         const searchReq = await requisicion.findAll({
             where:{
                 estado: {
-                    [Op.in]: ['pendiente', 'comprando']
+                    [Op.in]: ['pendiente', 'comprando', 'comprado']
                 }
             },
             include: [{
@@ -216,6 +216,7 @@ const getRealProyectosRequisicion = async (req, res) => {
               unidad: item.materium.unidad,
               linea: item.materium.linea.id,
               precios: item.materium.prices,
+              medida: item.medida,
               entregado: 0,
               totalCantidad: 0
             };
@@ -225,88 +226,111 @@ const getRealProyectosRequisicion = async (req, res) => {
         }
 
         if (item.producto) {
-          const prodId = `prod-${item.producto.id}`;
-          if (!consolidado[prodId]) {
-            consolidado[prodId] = {
-              tipo: 'producto',
-              id: item.producto.id,
-              nombre: item.producto.item,
-              medida: item.producto.medida,
-              unidad: item.producto.unidad,
-              precios: item.producto.productPrices,
-              cotizado: item.producto.productoCotizacion,
-              entregado: 0,
-              totalCantidad: 0
-            };
-          }
-
-          consolidado[prodId].totalCantidad += Number(item.cantidad);
-          consolidado[prodId].entregado += Number(item.cantidadEntrega);
-
-          // -------------------------------
-          // Acumular para productoTerminadoConsolidado (solo tipo = producto)
-          // -------------------------------
-          const pid = item.producto.id;
-          const qty = Number(item.cantidad || 0);
-
-          // obtener precio unitario desde productPrices (si hay alguno activo)
-          let precioUnidad = 0;
-          const pPrices = item.producto.productPrices || [];
-          if (Array.isArray(pPrices) && pPrices.length) {
-            const activePrice = pPrices.find(pp => pp.state === 'active') || pPrices[0];
-            if (activePrice) {
-              precioUnidad = Number(activePrice.precio || activePrice.price || activePrice.valor || 0);
+            // -------------------------------
+            // Consolidado (ID + medida)
+            // -------------------------------
+            const prodId = `prod-${item.producto.id}-${item.medida}`;
+            if (!consolidado[prodId]) {
+              consolidado[prodId] = {
+                tipo: 'producto',
+                id: item.producto.id,
+                nombre: item.producto.item,
+                medida: item.medida,
+                unidad: item.producto.unidad,
+                precios: item.producto.productPrices,
+                cotizado: item.producto.productoCotizacion,
+                entregado: 0,
+                totalCantidad: 0
+              };
             }
-          }
-
-          // ahora obtenemos las productoCotizacions desde el mapa que consultamos en BD
-          // Buscamos todas las areaCotizacions que pertenezcan a la cotizacion de esta requisición
-          const areaArr = (req.cotizacion && Array.isArray(req.cotizacion.areaCotizacions)) ? req.cotizacion.areaCotizacions : [];
-          // reunimos todas las productoCotizacions que pertenezcan a cualquiera de esas areas
-          let prodCotizArr = [];
-          if (areaArr.length) {
-            areaArr.forEach(ac => {
-              const aId = ac.id || ac.areaCotizacionId || ac.area_id;
-              const key = `${pid}-${aId}`;
-              if (prodCotMap[key] && prodCotMap[key].length) {
-                prodCotizArr = prodCotizArr.concat(prodCotMap[key]);
+          
+            consolidado[prodId].totalCantidad += Number(item.cantidad || 0);
+            consolidado[prodId].entregado += Number(item.cantidadEntrega || 0);
+          
+            // -------------------------------
+            // Producto terminado consolidado (ID + medida)
+            // -------------------------------
+            const pid = `${item.producto.id}-${item.medida}`;
+            const qty = Number(item.cantidad || 0);
+          
+            // obtener precio unitario desde productPrices
+            let precioUnidad = 0;
+            const pPrices = item.producto.productPrices || [];
+            if (Array.isArray(pPrices) && pPrices.length) {
+              const activePrice = pPrices.find(pp => pp.state === 'active') || pPrices[0];
+              if (activePrice) {
+                precioUnidad = Number(
+                  activePrice.precio ??
+                  activePrice.price ??
+                  activePrice.valor ??
+                  0
+                );
               }
-            });
-            // opcional: eliminar duplicados si existieran (por si la misma fila aparece más de una vez)
-            if (prodCotizArr.length) {
-              const seen = new Set();
-              prodCotizArr = prodCotizArr.filter(pc => {
-                const uniq = pc.id || `${pc.productoId}-${pc.areaCotizacionId}-${pc.someUnique}`;
-                if (seen.has(uniq)) return false;
-                seen.add(uniq);
-                return true;
+            }
+          
+            // obtener productoCotizacion según áreas de la cotización
+            const areaArr =
+              (req.cotizacion && Array.isArray(req.cotizacion.areaCotizacions))
+                ? req.cotizacion.areaCotizacions
+                : [];
+          
+            let prodCotizArr = [];
+            if (areaArr.length) {
+              areaArr.forEach(ac => {
+                const aId = ac.id || ac.areaCotizacionId || ac.area_id;
+                const key = `${pid}-${aId}`;
+                if (prodCotMap[key] && prodCotMap[key].length) {
+                  prodCotizArr = prodCotizArr.concat(prodCotMap[key]);
+                }
               });
+          
+              // eliminar duplicados
+              if (prodCotizArr.length) {
+                const seen = new Set();
+                prodCotizArr = prodCotizArr.filter(pc => {
+                  const uniq =
+                    pc.id ||
+                    `${pc.productoId}-${pc.areaCotizacionId}-${pc.someUnique}`;
+                  if (seen.has(uniq)) return false;
+                  seen.add(uniq);
+                  return true;
+                });
+              }
+            }
+          
+            if (!productoTermMap[pid]) {
+              productoTermMap[pid] = {
+                tipo: 'producto',
+                id: item.producto.id,
+                nombre:
+                  item.producto.item ||
+                  item.producto.name ||
+                  `Producto ${item.producto.id}`,
+                cantidadTotal: 0,
+                medida: item.producto.medida,
+                precioUnidad: precioUnidad || 0,
+                productoCotizacion: prodCotizArr || []
+              };
+            }
+          
+            // acumulamos correctamente
+            productoTermMap[pid].cantidadTotal += qty;
+          
+            // asignar precio si antes no tenía
+            if (
+              (!productoTermMap[pid].precioUnidad ||
+                productoTermMap[pid].precioUnidad === 0) &&
+              precioUnidad
+            ) {
+              productoTermMap[pid].precioUnidad = precioUnidad;
+            }
+          
+            // actualizar productoCotizacion si aplica
+            if (Array.isArray(prodCotizArr) && prodCotizArr.length) {
+              productoTermMap[pid].productoCotizacion = prodCotizArr;
             }
           }
-
-          if (!productoTermMap[pid]) {
-            productoTermMap[pid] = {
-              tipo: 'producto',
-              id: pid,
-              nombre: item.producto.item || item.producto.name || `Producto ${pid}`,
-              totalProductos: 0,
-              precioUnidad: precioUnidad || 0,
-              productoCotizacion: prodCotizArr || []
-            };
-          }
-
-          productoTermMap[pid].totalProductos += qty;
-
-          // si no tenemos precio y encontramos uno ahora, lo asignamos
-          if ((!productoTermMap[pid].precioUnidad || productoTermMap[pid].precioUnidad === 0) && precioUnidad) {
-            productoTermMap[pid].precioUnidad = precioUnidad;
-          }
-
-          // Actualizar productoCotizacion si viene distinto (prioriza las que pertenecen a las areas de esta cotizacion)
-          if (Array.isArray(prodCotizArr) && prodCotizArr.length) {
-            productoTermMap[pid].productoCotizacion = prodCotizArr;
-          }
-        }
+          
       });
     });
 
@@ -625,155 +649,14 @@ const getProveedoresComunesPT = async (req, res) => {
 const getRequisicion = async (req, res) => {
     try {
         const { reqId } = req.params;
-        if (!reqId) return res.status(400).json({ msg: 'Parámetro no es válido.' });
+        const data = await getRequisicionDetallada(reqId);
+        
+        if (!data) return res.status(404).json({ msg: 'No encontrado' });
 
-        // Consulta principal, ahora incluyendo productoCotizacion -> producto
-        const searchReq = await requisicion.findByPk(reqId, {
-            include: [{
-                model: cotizacion,
-                include: [
-                    { model: client },
-                    {
-                        model: areaCotizacion,
-                        include: [
-                            { model: kit, through: { attributes: ['cantidad', 'precio'] } },
-                            {
-                                model: armado,
-                                through: { attributes: ['cantidad', 'precio'] },
-                                include: [
-                                    { model: kit, as: 'kits', through: { attributes: ['cantidad'] } }
-                                ]
-                            },
-                            { 
-                                model: productoCotizacion, // 👈 aquí
-                                include: [ producto ]     // 👈 traemos el producto asociado
-                            }
-                        ]
-                    }
-                ]
-            }]
-        });
-
-        if (!searchReq) {
-            return res.status(404).json({ msg: 'No hemos encontrado esta requisición' });
-        }
-
-        const kitIds = new Set();
-        const kitDataMap = new Map();
-        searchReq.cotizacion.areaCotizacions.forEach(area => {
-            area.kits.forEach(k => { 
-                kitIds.add(k.id); 
-                kitDataMap.set(k.id, k.kitCotizacion); 
-            });
-            area.armados.forEach(a => 
-                a.kits.forEach(k => { 
-                    kitIds.add(k.id); 
-                    kitDataMap.set(k.id, k.armadoKits); 
-                })
-            );
-        });
-
-        const kitsConMateria = await kit.findAll({
-            where: { id: [...kitIds] },
-            include: [{ model: itemKit, include: [materia] }]
-        });
-
-        const totalMateriaPrima = {};
-        const totalKits = {};
-        const totalProductos = {}; // 👈 consolidado de productos
-
-        // Recorremos las áreas
-        searchReq.cotizacion.areaCotizacions.forEach(area => {
-            // --- Consolidar Kits ---
-            area.kits.forEach(kitEnCoti => {
-                const cantidadKitEnCoti = kitEnCoti.kitCotizacion?.cantidad || 0;
-
-                const kitId = kitEnCoti.id;
-                if (!totalKits[kitId]) {
-                    totalKits[kitId] = { id: kitId, nombre: kitEnCoti.name, cantidad: 0 };
-                }
-                totalKits[kitId].cantidad += cantidadKitEnCoti;
-
-                const kitDetallado = kitsConMateria.find(k => k.id === kitEnCoti.id);
-                if (kitDetallado && kitDetallado.itemKits) {
-                    kitDetallado.itemKits.forEach(item => {
-                        const key = `${item.materium.id}`;
-                        const cantidadTotal = Number(item.medida) * Number(cantidadKitEnCoti);
-
-                        const calibre = item.calibre; 
-                        if (!totalMateriaPrima[key]) {
-                            totalMateriaPrima[key] = { 
-                                id: item.calibre ? item.calibre : item.materium.id,
-                                cguno: item.materium.item,
-                                nombre: item.materium.description, 
-                                medidaOriginal: item.materium.medida, 
-                                unidad: item.materium.unidad, 
-                                cantidad: 0 
-                            };
-                        }
-                        totalMateriaPrima[key].cantidad += cantidadTotal;
-                    });
-                }
-            });
-
-            // --- Consolidar Armados ---
-            area.armados.forEach(armadoEnCoti => {
-                const cantidadArmadoEnCoti = armadoEnCoti.armadoCotizacion?.cantidad || 0;
-                armadoEnCoti.kits.forEach(kitEnArmado => {
-                    const cantidadKitEnArmado = kitEnArmado.armadoKits?.cantidad || 0;
-                    const kitDetallado = kitsConMateria.find(k => k.id === kitEnArmado.id);
-
-                    if (kitDetallado && kitDetallado.itemKits) {
-                        kitDetallado.itemKits.forEach(item => {
-                            const key = `${item.materium.id}`;
-                            const cantidadTotal = Number(item.medida) * Number(cantidadKitEnArmado) * Number(cantidadArmadoEnCoti);
-
-                            if (!totalMateriaPrima[key]) {
-                                totalMateriaPrima[key] = { 
-                                    id: item.materium.id,
-                                    nombre: item.materium.description, 
-                                    medidaOriginal: item.materium.medida, 
-                                    unidad: item.materium.unidad, 
-                                    cantidad: 0 
-                                };
-                            }
-                            totalMateriaPrima[key].cantidad += cantidadTotal;
-                        });
-                    }
-                });
-            });
-
-            // --- Consolidar Productos ---
-            if (area.productoCotizacions && area.productoCotizacions.length > 0) {
-                area.productoCotizacions.forEach(pc => {
-                    const cantidadProd = pc.cantidad || 0; // viene del through productoCotizacion
-                    const prod = pc.producto; // relación al producto
-                    if (!prod) return;
-
-                    const key = `${prod.id}`;
-                    if (!totalProductos[key]) {
-                        totalProductos[key] = {
-                            id: prod.id,
-                            nombre: prod.item,
-                            unidad: prod.unidad,
-                            cantidad: 0
-                        };
-                    }
-                    totalProductos[key].cantidad += Number(cantidadProd);
-                });
-            }
-        });
-
-        res.status(200).json({
-            requisicion: searchReq,
-            cantidades: Object.values(totalMateriaPrima),
-            resumenKits: Object.values(totalKits),
-            resumenProductos: Object.values(totalProductos)
-        });
-
+        return res.status(200).json(data);
     } catch (err) {
-        console.log(err);
-        res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
+        console.log(err)
+        res.status(500).json({ msg: 'Error' });
     }
 };
 
@@ -872,6 +755,11 @@ const getProjectByProduccion = async(req, res) => {
                             state: 'active'
                         }
                     }]
+                }, {
+                    model: itemAreaProduction,
+                    include:[{
+                        model: areaProduction
+                    }]
                 }]
             }, { 
                 model: cotizacion,
@@ -888,9 +776,9 @@ const getProjectByProduccion = async(req, res) => {
                     as: 'requisiciones',
                     include:[{
                         model: comprasCotizacionItem,
-                        include:[{ 
-                            model: materia,
-                        }, {model: producto}]
+                        include:[{model: materia}, {model: producto},
+                            
+                        ]
                     }]
                 }]
             }]
@@ -928,36 +816,82 @@ const getProjectByProduccion = async(req, res) => {
     }
 }
 
-const getNecesidadProject = async(req, res) => {
-    try{
-        // Recibimos datos por parmas
+// const getNecesidadProject = async(req, res) => {
+//     try{
+//         // Recibimos datos por parmas
+//         const { requisicionId } = req.params;
+//         // Si no existe, returnamos null
+//         if(!requisicionId) return res.status(400).json({msg: 'Los parámetros no son validos.'});
+//         // Caso contrario, avanzamos
+
+//         const getData = await axios.get(`https://unionapi-production.up.railway.app/api/requisicion/get/${requisicionId}`)
+//         .then((res) => {
+//             console.log(res.data);
+//             return res;
+//         })
+//         .then(res => res.data);
+
+//         getData.resumenKits.map(async (r) => {
+//             const asignarResumen = await giveNecesidadToProject(requisicionId, r.id, null, r.cantidad, )
+//         })
+
+//         getData.resumenProductos.map(async (r) => { 
+//             const asignarResumen = await giveNecesidadToProject(requisicionId, null, r.id,  r.cantidad)
+//         })
+
+
+//         return res.status(201).json({msg: 'Exito!'})
+//     }catch(err){
+//         console.log(err);
+//         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+//     }
+// }
+
+
+
+
+
+
+
+// 2. EL QUE PROCESA (El que adaptamos con Promise.all)
+
+
+const getNecesidadProject = async (req, res) => {
+    try {
         const { requisicionId } = req.params;
-        // Si no existe, returnamos null
-        if(!requisicionId) return res.status(400).json({msg: 'Los parámetros no son validos.'});
-        // Caso contrario, avanzamos
+        // 1. Obtenemos los datos del servicio (vienen separados por medida)
+        const data = await getRequisicionDetallada(requisicionId); 
 
-        const getData = await axios.get(`https://unionapi-production.up.railway.app/api/requisicion/get/${requisicionId}`)
-        .then((res) => {
-            console.log(res.data);
-            return res;
-        })
-        .then(res => res.data);
+        if (!data) return res.status(404).json({ msg: 'No encontrado' });
 
-        getData.resumenKits.map(async (r) => {
-            const asignarResumen = await giveNecesidadToProject(requisicionId, r.id, null, r.cantidad, )
-        })
+        // 2. Procesamos los KITS (Normal, pueden ir en paralelo)
+        const promesasKits = data.resumenKits.map(r => 
+            giveNecesidadToProject(requisicionId, r.id, null, r.cantidad)
+        );
+        await Promise.all(promesasKits);
 
-        getData.resumenProductos.map(async (r) => { 
-            const asignarResumen = await giveNecesidadToProject(requisicionId, null, r.id,  r.cantidad)
-        })
+        // 3. SOLUCIÓN PARA PRODUCTOS: Procesamiento secuencial
+        // Usamos un for...of para que no se pisen entre ellos en la DB
+        for (const prod of data.resumenProductos) {
+            // Importante: Si r.medida existe en el objeto 'data' pero no en tu tabla,
+            // podrías concatenarlo al campo 'observaciones' o 'descripcion' 
+            // de giveNecesidadToProject si esa función lo permite.
+            
+            await giveNecesidadToProject(
+                requisicionId, 
+                null, 
+                prod.id, 
+                prod.cantidad
+            );
+        }
 
+        return res.status(201).json({ msg: 'Exito!' });
 
-        return res.status(201).json({msg: 'Exito!'})
-    }catch(err){
-        console.log(err);
-        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
+    } catch (err) {
+        console.error("Error en getNecesidadProject:", err);
+        res.status(500).json({ msg: 'Error al procesar el proyecto' });
     }
-}
+};
 
 const addAllItems = async (req, res) => {
     try {
@@ -1021,10 +955,11 @@ const addAllItems = async (req, res) => {
                 let body = {
                     requisicionId,
                     productoId: val.id,
-                    cantidad: consumo
+                    cantidad: consumo,
+                    medida: val.medida
                 };
 
-                let a = await createCompromiso(null, consumo, getData.requisicion.cotizacionId, val.id); // Llamada para crear compromiso
+                let a = await createCompromiso(null, consumo, getData.requisicion.cotizacionId, val.id, medida); // Llamada para crear compromiso
                 return await axios.post(`https://unionapi-production.up.railway.app/api/requisicion/post/addItem/req`, body)
             })
         );
@@ -1035,6 +970,88 @@ const addAllItems = async (req, res) => {
         res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
     }
 };
+
+// VAMOS A CONSTRUIR UNA ÚNICA FUNCIÓN
+
+const newFunctionToAvanceCotizacion = async (req, res) => {
+    const t = await db.transaction();
+
+    try {
+        const { requisicionId } = req.params;
+        if (!requisicionId) {
+            await t.rollback();
+            return res.status(400).json({ msg: 'Parámetros inválidos' });
+        }
+
+        const getData = await getRequisicionDetallada(requisicionId);
+        if (!getData) {
+            await t.rollback();
+            return res.status(404).json({ msg: 'No encontrado' });
+        }
+
+        // 🔹 Materia prima
+        for (const val of getData.cantidades) {
+            await addMateriaRequisicion(
+                requisicionId,
+                val.id,
+                val.cantidad,
+                val.medida,
+                t
+            );
+
+            await createCompromiso(
+                val.id,
+                val.cantidad,
+                getData.requisicion.cotizacionId,
+                null,
+                val.medida,
+                t
+            );
+        }
+
+        // 🔹 Productos
+        for (const val of getData.resumenProductos) {
+            await addProductoRequisicion(
+                requisicionId,
+                val.id,
+                val.cantidad,
+                val.medida,
+                t
+            );
+
+            await createCompromiso(
+                null,
+                val.cantidad,
+                getData.requisicion.cotizacionId,
+                val.id,
+                val.medida,
+                t
+            );
+        }
+
+        // 🔹 Producción (MISMA TRANSACCIÓN)
+        const producido = await getNecesidadProjecto(requisicionId, t);
+        if (!producido) {
+            throw new Error('No se pudo generar producción');
+        }
+
+        // ✅ TODO OK
+        await t.commit();
+
+        return res.status(200).json({
+            msg: 'Cotización avanzada correctamente'
+        });
+
+    } catch (err) {
+        await t.rollback();
+        console.error('Rollback ejecutado:', err);
+        return res.status(500).json({
+            msg: 'Error al avanzar cotización'
+        });
+    }
+};
+
+
 
 const addProductToReq = async (req, res) => {
     try{ 
@@ -1056,7 +1073,8 @@ const addProductToReq = async (req, res) => {
             productoId,
             cantidad,
             cantidadEntrega: 0,
-            estado: 'pendiente'
+            estado: 'pendiente',
+            medida: medida || null
         });
 
         res.status(201).json(addItem)
@@ -1069,7 +1087,7 @@ const addProductToReq = async (req, res) => {
 const addMateriaReq = async (req, res) => {
     try{ 
         // Recibimos datos por body
-        const { materiaId, cantidad, requisicionId } = req.body;
+        const { materiaId, cantidad, medida, requisicionId } = req.body;
         if(!materiaId || !requisicionId) return res.status(400).json({msg: 'Parámetros invalidos'});
         // Caso contrario, avanzamos...
         
@@ -1086,7 +1104,8 @@ const addMateriaReq = async (req, res) => {
             materiumId: materiaId,
             cantidad: cantidad,
             cantidadEntrega: 0,
-            estado: 'pendiente'
+            estado: 'pendiente',
+            medida: medida || null
         });
 
         res.status(201).json(addItem)
@@ -1342,121 +1361,59 @@ const changeToCompras = async (req, res) => {
 
 // Actualizar a comprado
 const changeToComprasToComprado = async (req, res) => {
-    try{
-        const { comprasCotizacionId } = req.params;
-
-        if(!comprasCotizacionId) return res.status(400).json({msg: 'Parámetro invalido'});
-        const hoy = dayjs();
-        // Caso contrario, avanzamos...
-        const searchData = await comprasCotizacion.findOne({
-            where: {
-                id: comprasCotizacionId,
-            },
-            include:[{
-                model: requisicion,
-                as: 'requisiciones',
-                through: { attributes: [] }
-            }, {
-                model: comprasCotizacionItem
-            }]
-        });
-
-        if(!searchData) return res.status(404).json({msg: 'No hemos encotrado esto.'});
-        // Caso contrario, actualizamos 
-        const updateData = await comprasCotizacion.update({
-            estadoPago: 'comprado',
-            daysFinish: hoy.format('YYYY-MM-DD')
-        }, {
-            where: {
-                id: comprasCotizacionId
-            }
-        }).then(async (result) => {
-            const updateItemsCotizacions = await comprasCotizacionItem.update({
-                estado: 'aprobado',
-            }, {
-                where: {
-                    comprasCotizacionId
-                }
-            })
-
-            return result;
-        })
- 
-        if(!updateData) return res.status(501).json({msg: 'No hemos logrado actualizar esto'});
-        await updateItems(comprasCotizacionId)
-
-
-        // 🔹 NUEVO: actualizar requisiciones relacionadas
-        const requisicionIds = [
-            ...new Set(
-                searchData.comprasCotizacionItems.map((it) => it.requisicionId)
-            ),
-        ];
-
-
-        console.log('proyectos', searchData.requisiciones);
-
-    
-        searchData.requisiciones.forEach(async (proj) => {
-            console.log('Proyecto relacionado:', proj.id);
-            const allItems = await itemRequisicion.findAll({
-                where: { requisicionId: proj.id },
-            });
-
-            const total = allItems.length;
-            const comprados = allItems.filter(
-                (it) => it.estado === "aprobado"
-            ).length;
-
-            let nuevoEstado = "pendiente";
-            if (comprados === 0) {
-                nuevoEstado = "pendiente";
-            } else if (comprados < total) {
-                nuevoEstado = "parcialmente";
-            } else if (comprados === total) {
-                nuevoEstado = "comprado";
-            } 
- 
-            console.log('Nuevo estado', nuevoEstado)
-            console.log('Requisicion: 1,', proj.id);
-            await requisicion.update(
-                { estado: nuevoEstado },
-                { where: { id: proj.id } }
-            ); 
-        })
-        // for (const reqId of requisicionIds) {
-        //     // Todos los items de esa requisición
-        //     const allItems = await itemRequisicion.findAll({
-        //         where: { requisicionId: reqId },
-        //     });
-
-        //     const total = allItems.length;
-        //     const comprados = allItems.filter(
-        //         (it) => it.estado === "aprobado"
-        //     ).length;
-
-        //     let nuevoEstado = "pendiente";
-        //     if (comprados === 0) {
-        //         nuevoEstado = "pendiente";
-        //     } else if (comprados < total) {
-        //         nuevoEstado = "parcialmente";
-        //     } else if (comprados === total) {
-        //         nuevoEstado = "comprado";
-        //     } 
- 
-        //     console.log('Requisicion: 1,', reqId);
-        //     await requisicion.update(
-        //         { estado: nuevoEstado },
-        //         { where: { id: reqId } }
-        //     ); 
-        // }
-        // Caso contrario, avanzamos
-        res.status(200).json({msg: 'Actualizado...'});
-    }catch(err){
-        console.log(err);
-        res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
+    try {
+      const { comprasCotizacionId } = req.params;
+  
+      if (!comprasCotizacionId) {
+        return res.status(400).json({ msg: 'Parámetro inválido' });
+      }
+  
+      const hoy = dayjs().format('YYYY-MM-DD');
+  
+      // 1️⃣ Validar existencia de la cotización
+      const cotizacion = await comprasCotizacion.findByPk(comprasCotizacionId);
+  
+      if (!cotizacion) {
+        return res.status(404).json({ msg: 'No se encontró la cotización' });
+      }
+  
+      // 2️⃣ Marcar cotización como comprada
+      const [updated] = await comprasCotizacion.update(
+        {
+          estadoPago: 'comprado',
+          daysFinish: hoy,
+        },
+        {
+          where: { id: comprasCotizacionId },
+        }
+      );
+  
+      if (updated === 0) {
+        return res.status(500).json({ msg: 'No se pudo actualizar la cotización' });
+      }
+  
+      // 3️⃣ Marcar items de la cotización como aprobados
+      await comprasCotizacionItem.update(
+        { estado: 'aprobado' },
+        { where: { comprasCotizacionId } }
+      );
+  
+      // 4️⃣ 🔥 Actualizar cantidades + estados de requisición
+      await updateItems(comprasCotizacionId);
+  
+      // 5️⃣ Respuesta final
+      return res.status(200).json({
+        msg: 'Cotización comprada y requisiciones actualizadas correctamente',
+      });
+  
+    } catch (err) {
+      console.error(err);
+      return res.status(500).json({
+        msg: 'Ha ocurrido un error al procesar la compra',
+      });
     }
-}
+  };
+  
 
 
 // OBTENEMOS TODAS LAS ORDENES DE COMPRAS
@@ -1940,7 +1897,7 @@ const addItemToCotizacionProvider = async (req, res) => {
 const addItemToOrdenDeCompraProvider = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { cantidad, precioUnidad, descuento, precio, precioTotal, materiaId, productoId, cotizacionId, proyectos } = req.body;
+        const { cantidad, precioUnidad, descuento, precio, precioTotal, materiaId, productoId, cotizacionId, proyectos, medida } = req.body;
         // Validamos
         if(!cantidad || !precioUnidad || !precioTotal || !cotizacionId) return res.status(400).json({msg: 'Los parámetros no son validos.'});
         // Caso contrario, avanzamos
@@ -1954,7 +1911,6 @@ const addItemToOrdenDeCompraProvider = async (req, res) => {
             },
         });
 
-        if(searchItemCotizacion) return res.status(200).json({msg: 'Ya existe una cotización con este item'});
 
         // Caso contrario, avanzamos...
         const addItemCotizacion = await addItemToCotizacion(req.body);
@@ -2766,4 +2722,8 @@ module.exports = {
     changePriceToItemComprasCotizacion, // Cambiar el precio de la orden de compra    
     removeItemComprasCotizacion, // Quitar un item de la orden de compras
     changeTime, // Actualizar fechas de la requisición
+
+
+    // REESTRUCTURA
+    newFunctionToAvanceCotizacion, // Nueva función para avance de cotización
 }

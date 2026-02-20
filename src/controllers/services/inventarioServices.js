@@ -1,4 +1,4 @@
-const { ubicacion, materia, kit, producto, inventario, movimientoInventario,  inventarioItemFisico, cotizacion_compromiso, db } = require('../../db/db');
+const { ubicacion, materia, kit, producto, inventario, movimientoInventario,  inventarioItemFisico, cotizacion_compromiso, comprasCotizacionItem, itemToProject, requisicion, cotizacion, db } = require('../../db/db');
 const { Op, QueryTypes  } = require('sequelize');
 
 const sequelize = db
@@ -208,13 +208,46 @@ function consolidarKit(kit, cantidadKits = 1) {
     const materiaId = m.id ?? ik.materiaId;
     if (materiaId == null) continue;
 
-    const cantidadPorKit = toNumber(ik.cantidad);
-    const totalCantidad = cantidadPorKit * toNumber(cantidadKits);
-
     // campos solicitados: unidad, medida, item
     const unidad = m.unidad ?? '';
     const medida = m.medida ?? ik.medida ?? '';
     const item = m.description ?? m.description ?? '';
+    
+    // IMPORTANTE: Calcular la cantidad real en mt2 o mt basándose en ik.medida (medida del corte)
+    // Si la unidad es mt2 o mt, debemos calcular el área/longitud del corte, no usar ik.cantidad directamente
+    let cantidadPorKit = toNumber(ik.cantidad);
+    
+    // Si la unidad es mt2 y tenemos medida del corte, calcular el área real
+    if (unidad === 'mt2' && ik.medida) {
+      const medidaCorte = String(ik.medida).trim();
+      // Intentar parsear medida del corte (ej: "0.5X0.06" o "0.5 x 0.06")
+      const medidaMatch = medidaCorte.match(/(-?\d*\.?\d+)\s*(?:x|×|\*|por)\s*(-?\d*\.?\d+)/i);
+      if (medidaMatch) {
+        const ladoA = parseFloat(medidaMatch[1]);
+        const ladoB = parseFloat(medidaMatch[2]);
+        if (!isNaN(ladoA) && !isNaN(ladoB)) {
+          // Calcular área del corte en mt2
+          cantidadPorKit = Number((ladoA * ladoB).toFixed(6));
+        }
+      } else {
+        // Si no tiene formato X, intentar como número directo
+        const medidaNum = parseFloat(medidaCorte);
+        if (!isNaN(medidaNum)) {
+          cantidadPorKit = medidaNum;
+        }
+      }
+    } 
+    // Si la unidad es mt y tenemos medida del corte, usar directamente
+    else if (unidad === 'mt' && ik.medida) {
+      const medidaCorte = String(ik.medida).trim();
+      const medidaNum = parseFloat(medidaCorte);
+      if (!isNaN(medidaNum)) {
+        cantidadPorKit = medidaNum;
+      }
+    }
+    // Para otras unidades (kg, unidad, etc.), usar ik.cantidad directamente
+    
+    const totalCantidad = cantidadPorKit * toNumber(cantidadKits);
 
     if (!mapa[materiaId]) {
       mapa[materiaId] = {
@@ -469,64 +502,164 @@ async function registrarMovimientoAlmacen(datosMovimiento) {
     const { 
         materiaId, productoId, cantidad, tipoProducto, tipo, 
         ubicacionOrigenId, ubicacionDestinoId, refDoc, cotizacionId, 
-        itemFisicoId, numPiezas // <--- CAMPOS CLAVE AÑADIDOS
+        itemFisicoId, numPiezas, comprasCotizacionId // <--- CAMPOS CLAVE AÑADIDOS
     } = datosMovimiento;
 
-    console.log(`Debug: numPiezas: ${numPiezas}`);
-    console.log(`Debug: cantidad: ${cantidad}`); 
-    // --- 1. PROCESAR EL MOVIMIENTO Y ACTUALIZAR inventarioItemFisico ---
-    let piezaAfectada = null;
-    let itemsCreados = [];
-    
-    if (tipo === 'ENTRADA') {
-        console.log('ENTRADA: antes de crear item fisico')
-        // En la ENTRADA, la cantidad (ej: 60 ML) se convierte en 'numPiezas' (ej: 10 varillas).
-        itemsCreados = await crearItemFisico( 
-            // 🚨 VERIFICA ESTO: materiumId DEBE SER USADO AQUÍ
-            materiaId,  
-            productoId, 
-            ubicacionDestinoId, 
-            numPiezas,  
-            cotizacionId  
-        );
-
-
-        console.log('ENTRADA: despues de crear item fisico')
-
-    } else if (tipo === 'SALIDA') {
-        // En la SALIDA, se consume una parte de una pieza específica (itemFisicoId).
-        piezaAfectada = await actualizarItemFisico(itemFisicoId, cantidad, null, 'SALIDA');        
-    
-      } else if (tipo === 'TRANSFERENCIA') {
-        // En la TRANSFERENCIA, se mueve una pieza completa de ubicación.
-        piezaAfectada = await actualizarItemFisico(itemFisicoId, 0, ubicacionDestinoId, 'TRANSFERENCIA');
-        
-        // **Nota sobre el Compromiso:** Ya no manejas 'updateCantidadComprometida' aquí.
-        // El compromiso se gestiona en la tabla 'cotizacion_compromiso' y en el estado del ítem.
-    }
-
-    // --- 2. REGISTRAR EL MOVIMIENTO HISTÓRICO ---
-    
-    // Si fue una ENTRADA, registramos un movimiento global. 
-    // Si fue SALIDA/TRANSFERENCIA, registramos el itemFisicoId.
-    const itemMovimientoId = (tipo === 'ENTRADA') ? null : itemFisicoId; 
-
-    console.log('Debe crear movimiento')
-    console.log(materiaId, productoId, cotizacionId, cantidad, tipoProducto, tipo, refDoc, ubicacionOrigenId, ubicacionDestinoId, itemMovimientoId)
-    const movimiento = await movimientoInventario.create({
-        materiumId: materiaId,
+    console.log(`[REGISTRAR_MOVIMIENTO] Iniciando movimiento tipo ${tipo}:`, {
+        numPiezas,
+        cantidad,
+        materiaId,
         productoId,
-        cotizacionId, 
-        cantidad: cantidad, // Usamos la cantidad total del movimiento
-        tipoProducto,
-        tipoMovimiento: tipo,
-        referenciaDeDocumento: refDoc,
-        ubicacionOrigenId, 
-        ubicacionDestinoId,
-        itemFisicoId: itemMovimientoId // Enlace a la pieza afectada
+        comprasCotizacionId,
+        refDoc
     });
+    
+    // 🔄 TRANSACCIÓN GLOBAL: Todo el proceso debe ser atómico (todo o nada)
+    return await sequelize.transaction(async (t) => {
+        try {
+            // --- 1. PROCESAR EL MOVIMIENTO Y ACTUALIZAR inventarioItemFisico ---
+            let piezaAfectada = null;
+            let itemsCreados = [];
+            
+            if (tipo === 'ENTRADA') {
+                console.log('[REGISTRAR_MOVIMIENTO] ENTRADA: Iniciando creación de items físicos');
+                
+                // Validar que tengamos los datos necesarios con mensajes mejorados
+                if (!materiaId && !productoId) {
+                    throw new Error(`[REGISTRAR_MOVIMIENTO] Error de validación: Debe proporcionar materiaId o productoId para ENTRADA. Recibido: materiaId=${materiaId}, productoId=${productoId}`);
+                }
+                if (!numPiezas || numPiezas <= 0) {
+                    throw new Error(`[REGISTRAR_MOVIMIENTO] Error de validación: numPiezas debe ser mayor a 0. Recibido: ${numPiezas}`);
+                }
+                if (!ubicacionDestinoId) {
+                    throw new Error(`[REGISTRAR_MOVIMIENTO] Error de validación: ubicacionDestinoId es requerido para ENTRADA. Recibido: ${ubicacionDestinoId}`);
+                }
+                
+                // En la ENTRADA, la cantidad (ej: 60 ML) se convierte en 'numPiezas' (ej: 10 varillas).
+                // IMPORTANTE: crearItemFisico espera materiumId (no materiaId) y comprasCotizacionId (no cotizacionId)
+                // Pasamos la transacción global para que todo esté en la misma transacción
+                itemsCreados = await crearItemFisico( 
+                    materiaId,  // Se pasa como materiumId (el nombre del parámetro es materiumId pero acepta el valor de materiaId)
+                    productoId, 
+                    ubicacionDestinoId, 
+                    numPiezas,  
+                    comprasCotizacionId || null,  // Usar comprasCotizacionId en lugar de cotizacionId
+                    t  // 🔑 Pasar la transacción global
+                );
+
+                // ✅ VALIDAR que se hayan creado los items físicos antes de continuar
+                if (!itemsCreados || !itemsCreados.items || itemsCreados.items.length === 0) {
+                    throw new Error(`[REGISTRAR_MOVIMIENTO] Error crítico: No se pudieron crear los items físicos en el almacén. Se intentaron crear ${numPiezas} pieza(s) pero ninguna se guardó. Verifique logs anteriores para más detalles.`);
+                }
+
+                console.log(`[REGISTRAR_MOVIMIENTO] ENTRADA: Item físico agrupado creado exitosamente - ${itemsCreados.items.length} item(s) con ${itemsCreados.numPiezasOriginales || itemsCreados.items.length} pieza(s) agrupadas (cantidad total: ${itemsCreados.cantidadTotal})`);
+                
+                // ✅ VALIDACIÓN ADICIONAL: Verificar que el item físico realmente se guardó en la BD
+                if (itemsCreados.items && itemsCreados.items.length > 0) {
+                    const itemFisicoId = itemsCreados.items[0].id;
+                    if (!itemFisicoId) {
+                        throw new Error(`[REGISTRAR_MOVIMIENTO] Error crítico: El item físico se creó pero no tiene ID. Esto indica que no se guardó en la base de datos.`);
+                    }
+                    console.log(`[REGISTRAR_MOVIMIENTO] ENTRADA: Item físico verificado con ID: ${itemFisicoId}`);
+                }
+
+            } else if (tipo === 'SALIDA') {
+                // En la SALIDA, se consume una parte de una pieza específica (itemFisicoId).
+                if (!itemFisicoId) {
+                    throw new Error(`[REGISTRAR_MOVIMIENTO] Error de validación: itemFisicoId es requerido para SALIDA. Recibido: ${itemFisicoId}`);
+                }
+                // TODO: actualizarItemFisico debería aceptar transacción también
+                piezaAfectada = await actualizarItemFisico(itemFisicoId, cantidad, null, 'SALIDA');
+                if (!piezaAfectada) {
+                    throw new Error(`[REGISTRAR_MOVIMIENTO] Error crítico: No se pudo actualizar el item físico ID ${itemFisicoId} para SALIDA. Verifique que el item exista y tenga stock suficiente.`);
+                }
+                
+            } else if (tipo === 'TRANSFERENCIA') {
+                // En la TRANSFERENCIA, se mueve una pieza completa de ubicación.
+                if (!itemFisicoId) {
+                    throw new Error(`[REGISTRAR_MOVIMIENTO] Error de validación: itemFisicoId es requerido para TRANSFERENCIA. Recibido: ${itemFisicoId}`);
+                }
+                if (!ubicacionDestinoId) {
+                    throw new Error(`[REGISTRAR_MOVIMIENTO] Error de validación: ubicacionDestinoId es requerido para TRANSFERENCIA. Recibido: ${ubicacionDestinoId}`);
+                }
+                // TODO: actualizarItemFisico debería aceptar transacción también
+                piezaAfectada = await actualizarItemFisico(itemFisicoId, 0, ubicacionDestinoId, 'TRANSFERENCIA');
+                if (!piezaAfectada) {
+                    throw new Error(`[REGISTRAR_MOVIMIENTO] Error crítico: No se pudo transferir el item físico ID ${itemFisicoId} de ubicación ${ubicacionOrigenId} a ${ubicacionDestinoId}. Verifique que el item exista y las ubicaciones sean válidas.`);
+                }
+            } else {
+                throw new Error(`[REGISTRAR_MOVIMIENTO] Error de validación: Tipo de movimiento no soportado: ${tipo}. Tipos válidos: ENTRADA, SALIDA, TRANSFERENCIA`);
+            }
+
+            // --- 2. REGISTRAR EL MOVIMIENTO HISTÓRICO (dentro de la misma transacción) ---
+            // Solo después de validar que los items físicos se crearon/actualizaron correctamente
+            
+            // Si fue una ENTRADA, registramos un movimiento global. 
+            // Si fue SALIDA/TRANSFERENCIA, registramos el itemFisicoId.
+            // ✅ CORRECCIÓN: Para ENTRADA, también debemos asociar el itemFisicoId del item creado
+            let itemMovimientoId = null;
+            if (tipo === 'ENTRADA' && itemsCreados && itemsCreados.items && itemsCreados.items.length > 0) {
+                // Asociar el primer item físico creado al movimiento
+                itemMovimientoId = itemsCreados.items[0].id;
+            } else if (tipo !== 'ENTRADA') {
+                itemMovimientoId = itemFisicoId;
+            }
+
+            console.log('[REGISTRAR_MOVIMIENTO] Creando movimiento histórico:', {
+                materiaId, productoId, cotizacionId, cantidad, tipoProducto, tipo, refDoc, 
+                ubicacionOrigenId, ubicacionDestinoId, itemMovimientoId
+            });
+            
+            const movimiento = await movimientoInventario.create({
+                materiumId: materiaId, // En la BD se usa materiumId
+                productoId,
+                cotizacionId, 
+                comprasCotizacionId: comprasCotizacionId || null, // ✅ Agregar comprasCotizacionId para identificar entradas por orden de compra
+                cantidad: cantidad, // Usamos la cantidad total del movimiento
+                tipoProducto,
+                tipoMovimiento: tipo,
+                referenciaDeDocumento: refDoc,
+                ubicacionOrigenId, 
+                ubicacionDestinoId,
+                itemFisicoId: itemMovimientoId // ✅ Ahora incluye el ID del item físico creado para ENTRADA
+            }, { transaction: t }); // 🔑 Usar la transacción global
  
-    return movimiento; 
+            console.log(`[REGISTRAR_MOVIMIENTO] Movimiento ${tipo} registrado exitosamente. ID: ${movimiento.id}`);
+            
+            // ✅ VALIDACIÓN FINAL: Verificar que el movimiento se guardó correctamente
+            if (!movimiento || !movimiento.id) {
+                throw new Error(`[REGISTRAR_MOVIMIENTO] Error crítico: El movimiento se creó pero no tiene ID. Esto indica que no se guardó en la base de datos.`);
+            }
+            
+            // ✅ Para ENTRADA, verificar que el item físico sigue existiendo después de crear el movimiento
+            if (tipo === 'ENTRADA' && itemsCreados && itemsCreados.items && itemsCreados.items.length > 0) {
+                const itemFisicoId = itemsCreados.items[0].id;
+                const itemVerificado = await inventarioItemFisico.findByPk(itemFisicoId, { 
+                    transaction: t,
+                    attributes: ['id', 'cantidadDisponible', 'comprasCotizacionId']
+                });
+                if (!itemVerificado) {
+                    throw new Error(`[REGISTRAR_MOVIMIENTO] Error crítico: El item físico con ID ${itemFisicoId} no existe después de crear el movimiento. Esto indica un problema con la transacción.`);
+                }
+                console.log(`[REGISTRAR_MOVIMIENTO] ENTRADA: Item físico verificado después de crear movimiento - ID: ${itemVerificado.id}, Cantidad: ${itemVerificado.cantidadDisponible}, OC: ${itemVerificado.comprasCotizacionId}`);
+            }
+            
+            return movimiento;
+            
+        } catch (error) {
+            // El error se propagará y la transacción hará rollback automático
+            console.error(`[REGISTRAR_MOVIMIENTO] Error en transacción (se hará rollback automático):`, {
+                error: error.message,
+                tipo,
+                materiaId,
+                productoId,
+                refDoc,
+                comprasCotizacionId,
+                stack: error.stack
+            });
+            throw error; // Re-lanzar para que Sequelize haga el rollback
+        }
+    });
 }
 
 async function trasladarMateriaPrimaPorCantidad(
@@ -717,87 +850,279 @@ async function crearItemFisico(
   productoId,
   ubicacionDestinoId,
   numPiezas,
-  comprasCotizacionId
+  comprasCotizacionId,
+  transaction = null // Nueva: transacción opcional para transacciones globales
 ) {
-  // Validaciones mínimas
-  if (!materiumId && !productoId) throw new Error("Debe proporcionar un materiumId o un productoId.");
-  if (!ubicacionDestinoId) throw new Error("Debe proporcionar ubicacionDestinoId.");
+  console.log(`[CREAR_ITEM_FISICO] Llamada recibida:`, {
+    materiumId,
+    productoId,
+    ubicacionDestinoId,
+    numPiezas,
+    comprasCotizacionId,
+    tieneTransaccion: !!transaction
+  });
+
+  // Validaciones mínimas con mensajes mejorados
+  if (!materiumId && !productoId) {
+    throw new Error(`[CREAR_ITEM_FISICO] Error de validación: Debe proporcionar un materiumId o un productoId. Recibido: materiumId=${materiumId}, productoId=${productoId}`);
+  }
+  if (!ubicacionDestinoId) {
+    throw new Error(`[CREAR_ITEM_FISICO] Error de validación: ubicacionDestinoId es requerido. Recibido: ${ubicacionDestinoId}`);
+  }
+  const numPiezasOriginal = numPiezas;
   numPiezas = Number.isInteger(numPiezas) && numPiezas > 0 ? numPiezas : 1;
+  
+  if (numPiezas !== numPiezasOriginal) {
+    console.warn(`[CREAR_ITEM_FISICO] numPiezas ajustado de ${numPiezasOriginal} a ${numPiezas}`);
+  }
 
   let longitudInicial = null;
   let cantidadPorPieza = null; // para materia puede ser un valor >0; para producto será 1
+  let unidadMaterial = null; // Guardar la unidad para usarla después
 
   // --- 1. Obtener info según tipo ---
   if (materiumId) {
     const material = await materia.findByPk(materiumId, {
-      attributes: ['medida']
+      attributes: ['medida', 'id', 'item', 'description', 'unidad']
     });
-    if (!material) throw new Error("No se encontró la materia prima con el ID proporcionado.");
+    if (!material) {
+      throw new Error(`[CREAR_ITEM_FISICO] Error de datos: No se encontró la materia prima con ID ${materiumId} en la base de datos. Verifique que el material exista.`);
+    }
 
-  const medidaString = material.medida;
-  const medidaNumerica = parseMedidaToMeters(medidaString);
+    unidadMaterial = (material.unidad || '').toLowerCase().trim();
+    const medidaString = material.medida;
+    
+    console.log(`[CREAR_ITEM_FISICO] Material obtenido:`, {
+      id: material.id,
+      item: material.item,
+      unidad: unidadMaterial,
+      medida: medidaString,
+      numPiezas: numPiezas
+    });
+    
+    // ✅ Para unidades como kg, unidad, etc., usar directamente numPiezas como cantidad
+    // Solo para mt y mt2 usar la medida como cantidad por pieza
+    const requiereMedida = unidadMaterial === 'mt' || unidadMaterial === 'mt2';
+    
+    if (requiereMedida) {
+      const medidaNumerica = parseMedidaToMeters(medidaString);
 
-  if (medidaNumerica === null || medidaNumerica <= 0) {
-      throw new Error(`El campo 'medida' (${medidaString}) para este material no es interpretable como metros.`);
-  }
+      if (medidaNumerica === null || medidaNumerica <= 0) {
+        throw new Error(`[CREAR_ITEM_FISICO] Error de medida: El campo 'medida' del material ID ${materiumId} (${material.item || 'N/A'}) tiene un valor inválido: "${medidaString}". No se puede convertir a metros. Revise la configuración del material.`);
+      }
 
-  longitudInicial = medidaNumerica;
-    // Para materia, cada pieza tendrá longitudInicial = medidaNumerica
-    cantidadPorPieza = longitudInicial;
+      longitudInicial = medidaNumerica;
+      // Para mt/mt2, cada pieza tendrá longitudInicial = medidaNumerica
+      cantidadPorPieza = longitudInicial;
+      console.log(`[CREAR_ITEM_FISICO] Unidad requiere medida (mt/mt2):`, {
+        unidad: unidadMaterial,
+        medidaNumerica,
+        cantidadPorPieza,
+        numPiezas
+      });
+    } else {
+      // ✅ Para kg, unidad, etc., NO usar la medida, usar directamente numPiezas
+      // La cantidad total será numPiezas directamente (1 pieza = 1kg, 1 unidad, etc.)
+      // IMPORTANTE: Para estas unidades, numPiezas ya representa la cantidad en la unidad (1 = 1kg, no 1 caja de 25kg)
+      longitudInicial = null;
+      cantidadPorPieza = null; // ✅ NULL para indicar que NO se debe multiplicar
+      console.log(`[CREAR_ITEM_FISICO] Unidad NO requiere medida (kg/unidad/etc):`, {
+        unidad: unidadMaterial,
+        cantidadPorPieza: null,
+        numPiezas,
+        'NOTA': `Para ${unidadMaterial}, numPiezas (${numPiezas}) ya es la cantidad en ${unidadMaterial}. Se usará directamente sin multiplicar.`
+      });
+    }
 
   } else if (productoId) {
+    // Verificar que el producto exista
+    const productoExiste = await producto.findByPk(productoId, {
+      attributes: ['id']
+    });
+    if (!productoExiste) {
+      throw new Error(`[CREAR_ITEM_FISICO] Error de datos: No se encontró el producto con ID ${productoId} en la base de datos. Verifique que el producto exista.`);
+    }
+    
     // Producto terminado -> unidad por pieza
     // No usamos 'medida' para producto ahora: cada pieza es 1 unidad.
     longitudInicial = null;
     cantidadPorPieza = 1;
   }
 
-  // --- 2. Crear registros dentro de transacción (bulkCreate para eficiencia) ---
+  // --- 2. ✅ AGRUPAR: Crear UN SOLO item físico con la cantidad total agrupada ---
+  // Esto mejora el rendimiento y reduce la cantidad de registros sin perder trazabilidad
   const ahora = new Date();
-  const itemsToCreate = [];
-
-  for (let i = 0; i < numPiezas; i++) {
-    itemsToCreate.push({
-      // Referencias
-      materiumId: materiumId || null,
-      productoId: productoId || null,
-      ubicacionId: ubicacionDestinoId,
-
-      // Referencias comerciales
-      comprasCotizacionId: comprasCotizacionId || null,
-
-      // Cantidades / medidas
-      cantidadDisponible: cantidadPorPieza,
-      longitudInicial: longitudInicial,
-
-      // Metadatos / estados (ajusta nombres si tu modelo usa otros)
-      estado: 'Disponible',    // como en tu versión original
-      esRemanente: false,      // heurística base; podrías cambiar para materia si cantidadPorPieza < 1
-      createdAt: ahora,
-      updatedAt: ahora
+  
+  // ✅ Calcular cantidad total según el tipo de unidad
+  // Para mt/mt2: cantidadTotal = numPiezas * medida (ej: 10 piezas * 6m = 60m)
+  // Para kg, unidad, etc.: cantidadTotal = numPiezas directamente (ej: 1 pieza = 1kg)
+  let cantidadTotal;
+  if (materiumId && unidadMaterial) {
+    const requiereMedida = unidadMaterial === 'mt' || unidadMaterial === 'mt2';
+    
+    console.log(`[CREAR_ITEM_FISICO] Evaluando cálculo de cantidad:`, {
+      unidad: unidadMaterial,
+      requiereMedida,
+      cantidadPorPieza,
+      numPiezas,
+      'cantidadPorPieza != null': cantidadPorPieza != null,
+      'cantidadPorPieza > 0': cantidadPorPieza > 0
+    });
+    
+    // ✅ Verificar directamente la unidad - SOLO multiplicar para mt/mt2
+    // Para kg, unidad, etc., SIEMPRE usar numPiezas directamente (no multiplicar)
+    if (requiereMedida && cantidadPorPieza != null && cantidadPorPieza > 0) {
+      // Para mt/mt2: multiplicar por la medida
+      cantidadTotal = numPiezas * Number(cantidadPorPieza);
+      console.log(`[CREAR_ITEM_FISICO] ✅ Cálculo para mt/mt2 (MULTIPLICAR):`, {
+        unidad: unidadMaterial,
+        numPiezas,
+        cantidadPorPieza,
+        cantidadTotal: `${numPiezas} * ${cantidadPorPieza} = ${cantidadTotal}`
+      });
+    } else {
+      // ✅ Para kg, unidad, etc.: usar directamente numPiezas (NO multiplicar)
+      // IMPORTANTE: Para estas unidades, numPiezas ya representa la cantidad en la unidad
+      // Ejemplo: si numPiezas = 1 y unidad = kg, entonces cantidadTotal = 1kg (NO 1 * 25 = 25kg)
+      cantidadTotal = numPiezas;
+      console.log(`[CREAR_ITEM_FISICO] ✅ Cálculo para kg/unidad/etc (NO MULTIPLICAR):`, {
+        unidad: unidadMaterial,
+        numPiezas,
+        cantidadPorPieza,
+        cantidadTotal,
+        'NOTA': `Para ${unidadMaterial}, numPiezas (${numPiezas}) ya es la cantidad en ${unidadMaterial}. Se usa directamente sin multiplicar por medida.`
+      });
+    }
+  } else {
+    // Para productos: cantidadTotal = numPiezas
+    cantidadTotal = numPiezas;
+    console.log(`[CREAR_ITEM_FISICO] Cálculo para producto:`, {
+      numPiezas,
+      cantidadTotal
     });
   }
+  
+  // Para materias con mt/mt2: longitudInicial = medida de una pieza, cantidadDisponible = total agrupado
+  // Para materias con kg/unidad: cantidadDisponible = numPiezas directamente (1 pieza = 1kg, 1 unidad, etc.)
+  // Para productos: cantidadDisponible = numPiezas (agrupado)
+  const itemAgrupado = {
+    // Referencias
+    materiumId: materiumId || null,
+    productoId: productoId || null,
+    ubicacionId: ubicacionDestinoId,
+
+    // Referencias comerciales (TRAZABILIDAD: mantiene la orden de compra)
+    comprasCotizacionId: comprasCotizacionId || null,
+
+    // Cantidades / medidas (AGRUPADO)
+    cantidadDisponible: cantidadTotal, // ✅ Cantidad total agrupada
+    longitudInicial: longitudInicial, // Para materias: medida de una pieza individual
+
+    // Metadatos / estados
+    estado: 'Disponible',
+    esRemanente: false, // Item completo (no es remanente)
+    createdAt: ahora,
+    updatedAt: ahora
+  };
 
   try {
-    const createdItems = await sequelize.transaction(async (t) => {
-      // Usa bulkCreate dentro de la transacción
-      const created = await inventarioItemFisico.bulkCreate(itemsToCreate, { transaction: t, returning: true });
-      return created;
-    });
+    // Si se proporciona una transacción externa, usarla; si no, crear una nueva
+    const createItem = async (t) => {
+      console.log(`[CREAR_ITEM_FISICO] Intentando crear item físico con transacción:`, {
+        tieneTransaccion: !!t,
+        itemData: {
+          materiumId: itemAgrupado.materiumId,
+          productoId: itemAgrupado.productoId,
+          ubicacionId: itemAgrupado.ubicacionId,
+          cantidadDisponible: itemAgrupado.cantidadDisponible,
+          comprasCotizacionId: itemAgrupado.comprasCotizacionId
+        }
+      });
+      
+      try {
+        const created = await inventarioItemFisico.create(itemAgrupado, { 
+          transaction: t, 
+          returning: true 
+        });
+        
+        // ✅ Verificar que el objeto creado tenga ID antes de continuar
+        if (!created || !created.id) {
+          throw new Error(`[CREAR_ITEM_FISICO] El create() retornó un objeto sin ID. Esto indica que no se guardó en la base de datos.`);
+        }
+        
+        console.log(`[CREAR_ITEM_FISICO] Item físico creado exitosamente:`, {
+          id: created.id,
+          cantidadDisponible: created.cantidadDisponible,
+          comprasCotizacionId: created.comprasCotizacionId,
+          materiumId: created.materiumId,
+          productoId: created.productoId,
+          ubicacionId: created.ubicacionId
+        });
+        
+        return created;
+      } catch (createError) {
+        // Capturar errores específicos del create (constraints, foreign keys, etc.)
+        console.error(`[CREAR_ITEM_FISICO] Error al ejecutar create():`, {
+          error: createError.message,
+          name: createError.name,
+          original: createError.original?.message || createError.original,
+          sql: createError.sql,
+          itemData: itemAgrupado
+        });
+        throw createError;
+      }
+    };
 
-    // Normalizamos el retorno: cantidad total y registros creados (plain objects si es posible)
-    const createdPlain = createdItems.map(ci => (ci.get ? ci.get({ plain: true }) : ci));
-    const cantidadTotal = (cantidadPorPieza != null) ? (numPiezas * Number(cantidadPorPieza)) : null;
+    let createdItem;
+    if (transaction) {
+      // Usar la transacción proporcionada (transacción global)
+      console.log(`[CREAR_ITEM_FISICO] Usando transacción externa proporcionada`);
+      createdItem = await createItem(transaction);
+    } else {
+      // Crear una nueva transacción solo para esta operación
+      console.log(`[CREAR_ITEM_FISICO] Creando nueva transacción interna`);
+      createdItem = await sequelize.transaction(async (t) => {
+        return await createItem(t);
+      });
+    }
+
+    // Normalizar el retorno
+    const createdPlain = createdItem.get ? createdItem.get({ plain: true }) : createdItem;
+
+    if (!createdPlain || !createdPlain.id) {
+      throw new Error(`[CREAR_ITEM_FISICO] Error crítico: No se pudo crear el item físico agrupado. Se intentó crear ${numPiezas} piezas agrupadas pero no se guardó en la base de datos. El objeto retornado no tiene ID.`);
+    }
+    
+    console.log(`[CREAR_ITEM_FISICO] Item físico validado exitosamente - ID: ${createdPlain.id}, Cantidad: ${createdPlain.cantidadDisponible}`);
 
     return {
-      msg: `Se crearon ${numPiezas} ítems físicos correctamente.`,
-      numPiezasCreadas: numPiezas,
-      cantidadTotal, // para producto será igual a numPiezas (1 por pieza)
-      items: createdPlain
+      msg: `Se creó 1 ítem físico agrupado con ${numPiezas} piezas (cantidad total: ${cantidadTotal}) correctamente.`,
+      numPiezasCreadas: 1, // ✅ Ahora crea 1 item agrupado
+      numPiezasOriginales: numPiezas, // ✅ Mantiene referencia a cuántas piezas representa
+      cantidadTotal, // Cantidad total agrupada
+      items: [createdPlain] // ✅ Retorna como array para mantener compatibilidad
     };
   } catch (error) {
-    console.error("Error al crear ítems físicos:", error);
-    throw new Error("Fallo en la transacción al crear el inventario detallado.");
+    // Mejorar el mensaje de error con más contexto
+    const tipoItem = materiumId ? `materia prima ID ${materiumId}` : `producto ID ${productoId}`;
+    const errorMsg = error.message || 'Error desconocido';
+    
+    console.error(`[CREAR_ITEM_FISICO] Error al crear ítems físicos para ${tipoItem}:`, {
+      error: errorMsg,
+      stack: error.stack,
+      materiumId,
+      productoId,
+      ubicacionDestinoId,
+      numPiezas,
+      comprasCotizacionId
+    });
+    
+    // Si el error ya tiene un mensaje descriptivo, lanzarlo tal cual; si no, crear uno genérico
+    if (error.message && error.message.includes('[CREAR_ITEM_FISICO]')) {
+      throw error;
+    }
+    
+    throw new Error(`[CREAR_ITEM_FISICO] Error en base de datos al crear ${numPiezas} pieza(s) de ${tipoItem} en ubicación ${ubicacionDestinoId}. Detalle: ${errorMsg}. Verifique constraints, foreign keys y permisos de base de datos.`);
   }
 }
 
@@ -919,7 +1244,47 @@ async function sacarDelInventarioWithTransaction({
       });
 
       if (!itemsDisponibles || itemsDisponibles.length === 0) {
-        throw new Error('No hay ítems disponibles en la ubicación de origen para esa materia prima.');
+        // Log detallado para debugging
+        console.error('No hay items disponibles en bodega 4:', {
+          materiumId,
+          ubicacionId: ubicacionOrigenId,
+          cantidadSolicitada: cantidad
+        });
+        
+        // Verificar si hay items en bodega 1 (materia prima) para dar mensaje más claro
+        const itemsEnBodega1 = await inventarioItemFisico.findAll({
+          where: {
+            materiumId: materiumId,
+            ubicacionId: 1, // Bodega 1 (materia prima)
+            cantidadDisponible: { [Op.gt]: 0 }
+          },
+          attributes: ['id', 'ubicacionId', 'cantidadDisponible'],
+          raw: true,
+          transaction: t
+        });
+        
+        const stockBodega1 = itemsEnBodega1.reduce((sum, it) => sum + parseFloat(it.cantidadDisponible || 0), 0);
+        
+        if (itemsEnBodega1.length > 0) {
+          console.log('Material encontrado en bodega 1 pero no en bodega 4:', {
+            materiumId,
+            stockBodega1,
+            cantidadNecesaria: cantidad
+          });
+          
+          // Obtener información de la materia para el mensaje
+          let unidadMateria = '';
+          try {
+            const mat = await materia.findByPk(materiumId, { attributes: ['unidad', 'description'], raw: true, transaction: t });
+            unidadMateria = mat?.unidad || '';
+          } catch (e) {
+            // Ignorar error
+          }
+          
+          throw new Error(`El material no está en bodega 4 (en proceso). Hay ${stockBodega1.toFixed(2)} ${unidadMateria || 'unidades'} disponible(s) en bodega 1. Debes transferir el material a bodega 4 primero usando "Enviar a producción" en la orden de compra.`);
+        }
+        
+        throw new Error(`No hay material disponible en bodega 4 (en proceso) para la materia prima ID ${materiumId}. Necesitas ${cantidad.toFixed(2)} unidades. Verifica que el material haya sido transferido a la bodega en proceso.`);
       }
 
       let medidaCalc = null;
@@ -1272,6 +1637,11 @@ async function sacarDelInventario({
       }
 
       // 3) iterar y consumir
+      // IMPORTANTE: Esta función consume CANTIDADES PARCIALES para materia prima
+      // Ejemplos:
+      // - Si necesitas 4.5 mt2 y hay una lámina de 3 mt2: consume 3 mt2 (agota la lámina) y busca otra para 1.5 mt2
+      // - Si necesitas 2 mt y hay una varilla de 6 mt: consume 2 mt (deja 4 mt como remanente)
+      // - Para unidades (kg, unidad, etc.): se consumen enteras según la lógica del modelo
       let restante = cantidad;
       const detalles = [];
 
@@ -1282,6 +1652,8 @@ async function sacarDelInventario({
         const stockActual = parseFloat(pieza.cantidadDisponible);
         if (isNaN(stockActual) || stockActual <= EPS) continue;
 
+        // Consumir la cantidad necesaria (puede ser parcial)
+        // Si la pieza tiene 6 mt y necesitas 2 mt, consume 2 mt y deja 4 mt como remanente
         const aConsumir = Math.min(restante, stockActual);
         const nuevoStock = +(stockActual - aConsumir);
 
@@ -2196,7 +2568,7 @@ async function liberarCompromiso(materiaId, ubicacionId, cantidad) {
   return inv; 
 }
 
-async function createCompromiso(materiaId, cantidadComprometida, cotizacionId, productoId){
+async function createCompromiso(materiaId, cantidadComprometida, cotizacionId, productoId, medida){
   let numero = cantidadComprometida;
   console.log(numero)
   // Procedemos a crear el compromiso
@@ -2207,6 +2579,7 @@ async function createCompromiso(materiaId, cantidadComprometida, cotizacionId, p
     materiaId: !productoId ? materiaId : null,
     materiumId: !productoId ? materiaId : null,
     productoId: productoId,
+    medida: medida,
     cotizacionId,
     ubicacionId: 3
   })  
@@ -2216,7 +2589,7 @@ async function createCompromiso(materiaId, cantidadComprometida, cotizacionId, p
 
 
 // Obtener un producto por bodega (versión robusta: detecta columnas reales en movimientoInventario)
-async function getItemOverviewByBodega({ materiumId = null, productoId = null, ubicacionId, limitSample = 50 }) {
+async function getItemOverviewByBodega({ materiumId = null, productoId = null, ubicacionId, limitSample = 50, pageMovimientos = 1, limitMovimientos = 20 }) {
   if (!materiumId && !productoId) throw new Error('Debe indicar materiumId o productoId.');
   if (!ubicacionId) throw new Error('Debe indicar ubicacionId (bodega).');
 
@@ -2372,15 +2745,224 @@ async function getItemOverviewByBodega({ materiumId = null, productoId = null, u
     };
   }));
 
-  // 7) Respuesta final
+  // 7) Obtener movimientos de cada item físico (solo los que tienen cantidad)
+  // Nota: No obtenemos movimientos por item físico aquí para evitar sobrecarga
+  // Los movimientos se obtendrán con paginación cuando se necesiten
+  const registrosBodegaConMovimientos = registrosBodega.map(registro => ({
+    ...registro,
+    movimientos: [] // Se cargarán con paginación si se necesita
+  }));
+
+  // 8) Obtener movimientos generales del item en esta bodega (solo con cantidad, paginados)
+  // Parámetros de paginación (ya recibidos como parámetros de la función)
+  const offsetMovimientos = (pageMovimientos - 1) * limitMovimientos;
+
+  // Filtrar solo movimientos con cantidad (no null y > 0)
+  // Verificar ambas columnas posibles: cantidadAfectada y cantidad
+  // ✅ OPTIMIZACIÓN: Usar raw: true para mejor rendimiento y solo seleccionar campos necesarios
+  const movimientosGeneralesRaw = await movimientoInventario.findAll({
+    where: {
+      [campoFiltro]: idFiltro,
+      [Op.or]: [
+        { ubicacionOrigenId: ubicacionId },
+        { ubicacionDestinoId: ubicacionId }
+      ],
+      // Filtrar solo movimientos con cantidad (no null y > 0)
+      [Op.and]: [
+        sequelize.literal('"cantidad" IS NOT NULL AND "cantidad" > 0')
+      ]
+    },
+    attributes: ['id', 'cantidad', 'tipoMovimiento', 'tipoProducto', 'referenciaDeDocumento', 
+                 'cotizacionId', 'ubicacionOrigenId', 'ubicacionDestinoId', 
+                 'createdAt', 'updatedAt', 'materiumId', 'productoId', 'itemFisicoId'], // Solo campos necesarios (comprasCotizacionId no existe en la tabla)
+    order: [['createdAt', 'DESC']],
+    limit: limitMovimientos,
+    offset: offsetMovimientos,
+    raw: true // ✅ Mejor rendimiento
+  });
+
+  // ✅ OPTIMIZACIÓN: Obtener proyectos para todas las transferencias en una sola consulta
+  // movimientosGeneralesRaw ya viene como objetos planos (raw: true)
+  const movimientosGenerales = movimientosGeneralesRaw;
+  
+  // Identificar transferencias que necesitan proyectos
+  // Nota: comprasCotizacionId no existe en movimientoInventario, necesitamos obtenerlo de otra forma
+  // Por ahora, solo procesamos si tenemos itemFisicoId y podemos obtenerlo desde inventarioItemFisico
+  const transferenciasConItemFisico = movimientosGenerales.filter(
+    mov => mov.tipoMovimiento === 'TRANSFERENCIA' && mov.itemFisicoId
+  );
+  
+  // Si hay transferencias, obtener comprasCotizacionId desde inventarioItemFisico
+  let proyectosPorOC = {};
+  if (transferenciasConItemFisico.length > 0) {
+    // Obtener los itemFisicoId únicos
+    const itemFisicoIds = [...new Set(transferenciasConItemFisico.map(mov => mov.itemFisicoId).filter(Boolean))];
+    
+    // Obtener comprasCotizacionId desde inventarioItemFisico
+    const itemsFisicos = await inventarioItemFisico.findAll({
+      where: { id: { [Op.in]: itemFisicoIds } },
+      attributes: ['id', 'comprasCotizacionId'],
+      raw: true
+    });
+    
+    // Mapear itemFisicoId -> comprasCotizacionId
+    const itemFisicoToOC = {};
+    itemsFisicos.forEach(item => {
+      if (item.comprasCotizacionId) {
+        itemFisicoToOC[item.id] = item.comprasCotizacionId;
+      }
+    });
+    
+    // Agregar comprasCotizacionId a los movimientos
+    transferenciasConItemFisico.forEach(mov => {
+      if (itemFisicoToOC[mov.itemFisicoId]) {
+        mov.comprasCotizacionId = itemFisicoToOC[mov.itemFisicoId];
+      }
+    });
+    
+    const comprasCotizacionIds = [...new Set(Object.values(itemFisicoToOC))];
+    
+    if (comprasCotizacionIds.length > 0) {
+      try {
+        // Consulta optimizada: obtener todos los items de cotización de una vez
+        const itemsCotizacion = await comprasCotizacionItem.findAll({
+          where: {
+            comprasCotizacionId: { [Op.in]: comprasCotizacionIds },
+            [campoFiltro]: idFiltro
+          },
+          include: [{
+            model: itemToProject,
+            attributes: ['id', 'cantidad', 'comprasCotizacionItemId'],
+            include: [{
+              model: requisicion,
+              attributes: ['id', 'cotizacionId'],
+              include: [{
+                model: cotizacion,
+                attributes: ['id', 'name', 'description'] // ✅ Corregido: usar 'name' y 'description' según el modelo
+              }]
+            }]
+          }],
+          raw: false // Necesitamos los includes
+        });
+
+        // Agrupar proyectos por comprasCotizacionId
+        itemsCotizacion.forEach(item => {
+          if (item.itemToProjects && item.itemToProjects.length > 0) {
+            proyectosPorOC[item.comprasCotizacionId] = item.itemToProjects.map(itp => ({
+              cotizacionId: itp.requisicion?.cotizacionId,
+              nombreProyecto: itp.requisicion?.cotizacion?.name || `Proyecto ${itp.requisicion?.cotizacionId}`, // ✅ Corregido: usar 'name' en lugar de 'nombre'
+              cantidadAsignada: itp.cantidad
+            }));
+          }
+        });
+      } catch (error) {
+        console.error('[getItemOverviewByBodega] Error al obtener proyectos para transferencias:', error);
+      }
+    }
+  }
+
+  // Asignar proyectos a cada movimiento
+  movimientosGenerales.forEach(mov => {
+    if (mov.tipoMovimiento === 'TRANSFERENCIA' && mov.comprasCotizacionId && proyectosPorOC[mov.comprasCotizacionId]) {
+      const proyectos = proyectosPorOC[mov.comprasCotizacionId];
+      const cantidadTotal = proyectos.reduce((sum, p) => sum + parseFloat(p.cantidadAsignada || 0), 0);
+      
+      mov.proyectos = proyectos.map(proyecto => ({
+        ...proyecto,
+        cantidadProporcional: mov.cantidad && cantidadTotal > 0
+          ? (parseFloat(proyecto.cantidadAsignada || 0) / cantidadTotal) * parseFloat(mov.cantidad)
+          : 0
+      }));
+    } else {
+      mov.proyectos = [];
+    }
+  });
+
+  // ✅ Obtener comprasCotizacionId para ENTRADAS que tienen itemFisicoId
+  const entradasConItemFisico = movimientosGenerales.filter(
+    mov => mov.tipoMovimiento === 'ENTRADA' && mov.itemFisicoId
+  );
+  
+  let itemFisicoToOC = {};
+  if (entradasConItemFisico.length > 0) {
+    const itemFisicoIds = [...new Set(entradasConItemFisico.map(mov => mov.itemFisicoId).filter(Boolean))];
+    const itemsFisicos = await inventarioItemFisico.findAll({
+      where: { id: { [Op.in]: itemFisicoIds } },
+      attributes: ['id', 'comprasCotizacionId'],
+      raw: true
+    });
+    
+    itemsFisicos.forEach(item => {
+      if (item.comprasCotizacionId) {
+        itemFisicoToOC[item.id] = item.comprasCotizacionId;
+      }
+    });
+    
+    // Asignar comprasCotizacionId a las ENTRADAS
+    entradasConItemFisico.forEach(mov => {
+      if (itemFisicoToOC[mov.itemFisicoId]) {
+        mov.comprasCotizacionId = itemFisicoToOC[mov.itemFisicoId];
+      }
+    });
+  }
+
+  // ✅ Obtener nombres de bodegas de forma optimizada
+  const ubicacionIds = [...new Set([
+    ...movimientosGenerales.map(m => m.ubicacionOrigenId).filter(Boolean),
+    ...movimientosGenerales.map(m => m.ubicacionDestinoId).filter(Boolean)
+  ])];
+  
+  let ubicacionesMap = {};
+  if (ubicacionIds.length > 0) {
+    const ubicaciones = await ubicacion.findAll({
+      where: { id: { [Op.in]: ubicacionIds } },
+      attributes: ['id', 'nombre'],
+      raw: true
+    });
+    
+    ubicaciones.forEach(ub => {
+      ubicacionesMap[ub.id] = ub.nombre || null;
+    });
+  }
+  
+  // Asignar nombres de bodega a cada movimiento (solo el nombre de la tabla ubicacion)
+  movimientosGenerales.forEach(mov => {
+    mov.ubicacionOrigenNombre = mov.ubicacionOrigenId ? (ubicacionesMap[mov.ubicacionOrigenId] || null) : null;
+    mov.ubicacionDestinoNombre = mov.ubicacionDestinoId ? (ubicacionesMap[mov.ubicacionDestinoId] || null) : null;
+  });
+
+  // ✅ OPTIMIZACIÓN: Count más rápido usando columna específica
+  const totalMovimientos = await movimientoInventario.count({
+    where: {
+      [campoFiltro]: idFiltro,
+      [Op.or]: [
+        { ubicacionOrigenId: ubicacionId },
+        { ubicacionDestinoId: ubicacionId }
+      ],
+      // Filtrar solo movimientos con cantidad (no null y > 0)
+      [Op.and]: [
+        sequelize.literal('"cantidad" IS NOT NULL AND "cantidad" > 0')
+      ]
+    },
+    col: 'id' // ✅ Especificar columna para count más rápido
+  });
+
+  // 9) Respuesta final
   return {
     success: true,
     itemType: tipo,
     item: itemData,
     resumenBodega,
-    registrosBodega,
+    registrosBodega: registrosBodegaConMovimientos, // Items físicos
     otrasBodegas,
-    compromisos: compromisosWithDelivered
+    compromisos: compromisosWithDelivered,
+    movimientos: movimientosGenerales, // Movimientos generales del item en esta bodega (paginados)
+    paginacionMovimientos: {
+      page: pageMovimientos,
+      limit: limitMovimientos,
+      total: totalMovimientos,
+      totalPages: Math.ceil(totalMovimientos / limitMovimientos)
+    }
   };
 }
 

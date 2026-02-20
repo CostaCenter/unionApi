@@ -18,6 +18,10 @@ const requisicionroutes = require('./requisicion'); // Requisiciones
 const superKitsRoutes = require('./superkits');
 const permission = require('./permission');
 const inventario = require('./inventario');
+const inventarioVersion = require('./inventarioRoutesVersion'); // Rutas versionadas
+const stockRoutes = require('./stock'); // Rutas de stock
+const productionRoutes = require('./production'); // Rutas de producción
+const remisionRoutes = require('./remision'); // Rutas de remisión
 
 router.use('/users', userRoutes);
 router.use('/proveedores', proveedorRoutes);
@@ -36,9 +40,12 @@ router.use('/superkit', superKitsRoutes);
 router.use('/permission', permission)
 
 router.use('/inventario', inventario)
+router.use('/inventario-version', inventarioVersion) // Rutas versionadas para transferencias
 
- 
+router.use('/stock', stockRoutes);
 
- 
+router.use('/production', productionRoutes);
+
+router.use('/remision', remisionRoutes);
 
 module.exports = router; 

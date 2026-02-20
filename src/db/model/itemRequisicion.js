@@ -10,6 +10,10 @@ module.exports = sequelize => {
         cantidadEntrega: {
             type: DataTypes.STRING 
         },
+        // MEDIDA
+        medida: {
+            type: DataTypes.STRING
+        },
         // PENDIENTE, SIN EMPEZAR, PARCIAL, COMPLETADO, CANCELADO
         estado: {
             type: DataTypes.STRING
