@@ -211,6 +211,10 @@ const getAllCotizaciones = async(req, res) => {
         const { userId } = req.params;
         // Buscamos primero el usuario
 
+        // ✅ Validación crucial
+        if (!userId || userId === 'undefined') {
+            return res.status(400).json({ error: "El ID de usuario es necesario y no fue proporcionado." });
+        }
         const person = await user.findByPk(userId);
         if(!person) return res.status(404).json({msg: 'No hemos encontrado este usuario.'});
         // Caso contrario, avanzamos
