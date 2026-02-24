@@ -663,14 +663,29 @@ const getRequisicion = async (req, res) => {
 // Actualizamos item compra
 const updateItemCompra = async (req, res) => {
     try{
-        const { cantidadEntrega, comprasItemCotizacion } = req.body
+        const { cantidadEntrega, comprasItemCotizacion, requisicionId, materiaId, productoId } = req.body
         if(!cantidadEntrega || !comprasItemCotizacion) return res.status(400).json({msg: 'Parametros no validos'})
+        
+        // Buscar requisicion
+        const searchRequisicion = await requisicion.findByPk(requisicionId);
+        if(!searchRequisicion) return res.status(404).json({msg: 'No hemos encontrado esta requisicion'});
         // Avanzamos
         const updateThat = await itemRequisicion.update({
             cantidadEntrega: cantidadEntrega,
         }, {
             where: {
                 id: comprasItemCotizacion                
+            }
+        });
+
+
+        const updateTooNecesidad = await cotizacion_compromiso.update({
+            cantidadEntregada: cantidadEntrega,
+        }, {
+            where: {
+                cotizacionId: searchRequisicion.cotizacionId,
+                materiaId: materiaId,
+                productoId: productoId               
             }
         });
 
