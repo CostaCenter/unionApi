@@ -1,5 +1,5 @@
 const express = require('express');
-const { getAllRequisiciones, getRequisicion, getMultipleReq, changeStateOfReq, addProductToReq, addAllItems, addMateriaReq, realRequisicion, getRealProyectosRequisicion, getMateriaByComprar, getProveedoresComunes, newCotizacionProvider, addItemToCotizacionProvider, addSomeMuchCotizacionsProvider, getAllCotizacionsCompras, getCotizacionCompras, changeToCompras, changeToComprasToComprado, getAllOrdenesCompras, getOrdenDeCompra, changeItemCotizacionCompras, getProductosByComprar, getProveedoresComunesPT, addItemToCotizacionController, getProveedoresStats, addItemsToCotizacion, deleteItemOnCotizacion, getProveedoresStatsProductos, getDataProject, updateItemCompra, addItemToOrdenDeCompraProvider, getAllOrdenesComprasFiltro, buscarPorQueryMateria, buscarPorQueryRequisicion, buscarPorQueryProveedor, buscarPorQueryOrden, giveNoteToOrden, getNecesidadProject, getProjectByProduccion, getKitOProductFromProduction, buscarPorQueryRequisicionComplete, removeOrdenDeCompra, changePriceToItemComprasCotizacion, removeItemComprasCotizacion, changeTime, newFunctionToAvanceCotizacion } = require('../controllers/requisicionController');
+const { getAllRequisiciones, getRequisicion, getMultipleReq, changeStateOfReq, addProductToReq, addAllItems, addMateriaReq, realRequisicion, getRealProyectosRequisicion, getMateriaByComprar, getProveedoresComunes, newCotizacionProvider, addItemToCotizacionProvider, addSomeMuchCotizacionsProvider, getAllCotizacionsCompras, getCotizacionCompras, changeToCompras, changeToComprasToComprado, getAllOrdenesCompras, getOrdenDeCompra, changeItemCotizacionCompras, getProductosByComprar, getProveedoresComunesPT, addItemToCotizacionController, getProveedoresStats, addItemsToCotizacion, deleteItemOnCotizacion, getProveedoresStatsProductos, getDataProject, updateItemCompra, addItemToOrdenDeCompraProvider, getAllOrdenesComprasFiltro, buscarPorQueryMateria, buscarPorQueryRequisicion, buscarPorQueryProveedor, buscarPorQueryOrden, giveNoteToOrden, getNecesidadProject, getProjectByProduccion, getKitOProductFromProduction, buscarPorQueryRequisicionComplete, removeOrdenDeCompra, changePriceToItemComprasCotizacion, removeItemComprasCotizacion, changeTime, newFunctionToAvanceCotizacion, changeItemOnRequisicionAndNecesidad } = require('../controllers/requisicionController');
 const router = express.Router();
 
 
@@ -49,7 +49,8 @@ router.route('/get/multiReq')
 router.route('/put/estado') // Actualizamos requisición
     .put(changeStateOfReq)
 
-
+router.route('/put/changeItem/onReqAndNeed')
+    .post(changeItemOnRequisicionAndNecesidad)
 // COMPRAS Y COTIZACIONES
 router.route('/post/generar/cotizacion/one')
     .post(newCotizacionProvider)

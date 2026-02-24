@@ -1,6 +1,6 @@
 const express = require('express');
 const { materia, producto, productPrice, productoCotizacion, cotizacion, serviceCotizacion, service, client, user, armado, kitCotizacion, armadoKits, areaCotizacion, armadoCotizacion, proveedor, extension, price, kit, itemKit, linea, categoria, requisicion, itemRequisicion, 
-    comprasCotizacion, areaProduction, itemAreaProduction, ComprasCotizacionProyecto, comprasCotizacionItem, cotizacion_compromiso, itemToProject, necesidadProyecto, priceKit, db, Op} = require('../db/db');
+    comprasCotizacion,  ComprasCotizacionProyecto, comprasCotizacionItem, cotizacion_compromiso, itemToProject, necesidadProyecto, priceKit, db, Op} = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 const { default: axios } = require('axios');
@@ -755,11 +755,6 @@ const getProjectByProduccion = async(req, res) => {
                             state: 'active'
                         }
                     }]
-                }, {
-                    model: itemAreaProduction,
-                    include:[{
-                        model: areaProduction
-                    }]
                 }]
             }, { 
                 model: cotizacion,
@@ -776,9 +771,9 @@ const getProjectByProduccion = async(req, res) => {
                     as: 'requisiciones',
                     include:[{
                         model: comprasCotizacionItem,
-                        include:[{model: materia}, {model: producto},
-                            
-                        ]
+                        include:[{ 
+                            model: materia,
+                        }, {model: producto}]
                     }]
                 }]
             }]
@@ -1864,7 +1859,7 @@ const getOrdenDeCompraAlmacen = async (req, res) => {
 const addItemToCotizacionProvider = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { cantidad, precioUnidad, precioTotal, materiaId, productoId, cotizacionId } = req.body;
+        const { cantidad, precioUnidad, precioTotal, materiaId, productoId, cotizacionId, medida } = req.body;
         // Validamos
         if(!cantidad || !precioUnidad || !precioTotal || !cotizacionId) return res.status(400).json({msg: 'Los parámetros no son validos.'});
         // Caso contrario, avanzamos
@@ -1874,7 +1869,8 @@ const addItemToCotizacionProvider = async (req, res) => {
             where: {
                 materiaId,
                 productoId,
-                comprasCotizacionId: cotizacionId
+                comprasCotizacionId: cotizacionId,
+                medida
             },
         });
 
@@ -1893,6 +1889,79 @@ const addItemToCotizacionProvider = async (req, res) => {
     }
 }
 
+// changeItem On Requisición 
+const changeItemOnRequisicionAndNecesidad  = async (req, res) => {
+    const t = await db.transaction();
+    try{
+        // Recibimos datos por body
+        const { requisicionId, materiaId, itemId, cotizacionId } = req.body;
+        // Validamos
+        if(!itemId || !requisicionId || !materiaId || !cotizacionId) {
+            await t.rollback();
+            return res.status(400).json({msg: 'Los parámetros no son validos.'});
+        }
+        
+        // Validar que el itemId (nueva materia) exista
+        const nuevaMateria = await materia.findByPk(itemId, { transaction: t });
+        if(!nuevaMateria) {
+            await t.rollback();
+            return res.status(404).json({msg: 'La materia prima de reemplazo no existe.'});
+        }
+
+        // Buscar el item de requisición a actualizar
+        const searchItem = await itemRequisicion.findOne({
+            where: {
+                requisicionId: requisicionId,
+                materiumId: materiaId,
+            },
+            transaction: t
+        });
+        if(!searchItem) {
+            await t.rollback();
+            return res.status(404).json({msg: 'No hemos encontrado este item en la requisición.'});
+        }
+
+        // Actualizar itemRequisicion
+        const [updateItemRows] = await itemRequisicion.update({
+            materiumId: itemId,
+        }, {
+            where: {
+                id: searchItem.id,
+            },
+            transaction: t
+        });
+
+        if(updateItemRows === 0) {
+            await t.rollback();
+            return res.status(500).json({msg: 'No se pudo actualizar el item de requisición.'});
+        }
+
+        // Actualizar cotizacion_compromiso
+        const [updateCompromisoRows] = await cotizacion_compromiso.update({
+            materiaId: itemId,
+            materiumId: itemId,
+        }, {
+            where: {
+                cotizacionId: cotizacionId,
+                materiumId: materiaId,
+            },
+            transaction: t
+        });
+
+        if(updateCompromisoRows === 0) {
+            await t.rollback();
+            return res.status(500).json({msg: 'No se pudo actualizar el compromiso de cotización.'});
+        }
+
+        // Todo OK, commit de la transacción
+        await t.commit();
+        res.status(200).json({msg: 'Item actualizado correctamente'});
+    }catch(err){
+        await t.rollback();
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
 // Orden de compra
 const addItemToOrdenDeCompraProvider = async (req, res) => {
     try{
@@ -2726,4 +2795,5 @@ module.exports = {
 
     // REESTRUCTURA
     newFunctionToAvanceCotizacion, // Nueva función para avance de cotización
+    changeItemOnRequisicionAndNecesidad, // Cambiar item de requisición y necesidad
 }

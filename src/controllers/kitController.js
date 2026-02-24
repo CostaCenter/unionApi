@@ -353,7 +353,8 @@ const getKitsFiltradosProduccion = async (req, res) => {
                 { model: linea },
                 { model: extension }
             ],
-            order: [['createdAt', 'DESC']]
+            order: [['createdAt', 'DESC']],
+            limit: 30, 
         });
 
         return res.status(200).json(kitsResults);
@@ -509,6 +510,71 @@ const getAllKit = async(req, res) => {
                 }
             ] ,
             order:[['name', 'ASC']],
+        });
+
+        if(!searchAll || searchAll.length === 0) return res.status(404).json({msg: 'No se encontraron kits'});
+
+        res.status(200).json(searchAll);
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en el servidor'})
+    }
+}
+
+
+// Obtener todos los kits Versión 2
+const getAllKitV2 = async(req, res) => {
+    try{
+        const { estado = 'completa' } = req.query;
+        const searchAll = await kit.findAll({
+            where: {
+                state: estado || 'completa'  // Completa, simulacion, y desarrollo
+            },
+            include:[
+                // ▼▼▼ INICIO DEL BLOQUE MODIFICADO ▼▼▼
+                {
+                    model: itemKit, // 1. La asociación ahora pasa por el modelo intermedio
+                    attributes: { 
+                        // Opcional: Excluye datos de la tabla intermedia para una respuesta más limpia
+                        exclude: ['createdAt', 'updatedAt', 'kitId', 'materiaId', 'areaId'] 
+                    },
+                    include: [
+                        {
+                            model: materia, // 2. Incluimos Materia DENTRO de ItemKit
+                            include:[{
+                                model: price,
+                                where: {
+                                    state: 'active'
+                                },
+                                required: false // Se recomienda para no excluir kits si una materia no tiene precio activo
+                            }]
+                        },
+                        {
+                            model: areaKit // 3. Incluimos también el Área
+                        }
+                    ]
+                },
+                // ▲▲▲ FIN DEL BLOQUE MODIFICADO ▲▲▲
+                { 
+                    model: categoria,
+                    attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
+                },{
+                    model: linea,
+                    include:[{
+                        model: percentage,
+                        where: {
+                            state: 'active'
+                        },
+                        required:false
+                    }],
+                    attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'code', 'state'] }
+                },{ 
+                    model: extension,
+                    attributes: { exclude: ['createdAt', 'updatedAt', 'description', 'type', 'state'] }
+                }
+            ] ,
+            order:[['name', 'ASC']],
+            limit: 50,
         });
 
         if(!searchAll || searchAll.length === 0) return res.status(404).json({msg: 'No se encontraron kits'});
@@ -1416,4 +1482,5 @@ module.exports = {
     cancelRequired, // Cancelar requerimiento
     giveKitToRequerimiento, // Dar kit a un requerimiento - para creando
     readRequerimiento, // Leer desde producción
+    getAllKitV2, // Obtener todos los kits V2
 }

@@ -1,5 +1,5 @@
 const express = require('express');
-const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit, searchKitsForCoti, addSegmento, updateSegmento, getProduccion, getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit, needNewKit, addMessageToRequerimiento, giveKitToRequerimiento, getAllRequerimientos, getRequerimiento, readRequerimiento, clonarKitCotizacion, getKitsFiltradosProduccion, updateItemKitCalibre } = require('../controllers/kitController');
+const { addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, updateItemOnKit, searchKitsForCoti, addSegmento, updateSegmento, getProduccion, getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit, needNewKit, addMessageToRequerimiento, giveKitToRequerimiento, getAllRequerimientos, getRequerimiento, readRequerimiento, clonarKitCotizacion, getKitsFiltradosProduccion, updateItemKitCalibre, getAllKitV2 } = require('../controllers/kitController');
 const multer = require('multer');
 
 const router = express.Router();
@@ -22,6 +22,9 @@ router.route('/getAll/general')
 
 router.route('/getAll') 
     .get(getAllKit);
+
+router.route('/getAll/general/v2')
+    .get(getAllKitV2)
 
 router.route('/get/filter/querys/kits')
     .get(getKitsFiltradosProduccion)
