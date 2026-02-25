@@ -426,7 +426,14 @@ const getMateriaByComprar =  async (req, res) => {
             include:[{
                 model: itemRequisicion,
                 where: { requisicionId: { [Op.in]: ids } },
-                include: [ {model: requisicion}]
+                include: [ {
+                    model: requisicion, 
+                    required: false,
+                    include: [{
+                        model: comprasCotizacionItem,
+                        required: false
+                    }]
+                }]
             }, {
                 model: price,
                 where: {
@@ -454,6 +461,7 @@ const getMateriaByComprar =  async (req, res) => {
 
         if(!dataMP) return res.status(404).json({msg: 'NO hay resultados'});
         // Caso contrario, avanzamos
+        console.log(dataMP)
         res.status(201).json(dataMP)
 
     }catch(err){
