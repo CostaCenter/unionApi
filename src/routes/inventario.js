@@ -1,5 +1,5 @@
 const express = require('express');
-const { newBodega, registrarMovimientos, nuevoCompromiso, addMtToBodega, addPTToBodega, getInvetarioMateriaPrima, getBodegas, getBodegaItems, getMovimientosBodega, searchMPForInventario, getAllInventarioId, getMovimientosMateriaBodega, getMovimientosItemProyectos, getCotizacionConCompromisos, getOneCotizacionConCompromisos, searchPTForInventario, getAllInventarioIdProducto, getMovimientosProductosBodega, getItemOverviewByBodegaController, listarItemsController, getItemsConMenosStockController, getItemsConMasMovimientoController, getItemsConCompromisoNegativoController, sacaKitBodegaEnProceso, getKitMateriaPrimaStock, sacaProductoBodegaEnProceso, getProductoTerminadoStock } = require('../controllers/almacen');
+const { newBodega, registrarMovimientos, nuevoCompromiso, addMtToBodega, addPTToBodega, getInvetarioMateriaPrima, getBodegas, getBodegaItems, getMovimientosBodega, searchMPForInventario, getAllInventarioId, getMovimientosMateriaBodega, getMovimientosItemProyectos, getCotizacionConCompromisos, getOneCotizacionConCompromisos, searchPTForInventario, getAllInventarioIdProducto, getMovimientosProductosBodega, getItemOverviewByBodegaController, listarItemsController, getItemsConMenosStockController, getItemsConMasMovimientoController, getItemsConCompromisoNegativoController, sacaKitBodegaEnProceso, getKitMateriaPrimaStock, sacaProductoBodegaEnProceso, getProductoTerminadoStock, sacaMateriaDirectaBodegaEnProceso, transferirMateriaProyectoDesdeBodegaPrincipal } = require('../controllers/almacen');
 const { getAllCotizacionsComprasAlmacen, getOrdenDeCompraAlmacen } = require('../controllers/requisicionController');
 const { registrarMovimientoAlmacen } = require('../controllers/services/inventarioServices');
 const router = express.Router();
@@ -81,6 +81,18 @@ router.route('/remove/kit/materiaBodega/')
 
 router.route('/remove/producto/bodega/')
     .get(sacaProductoBodegaEnProceso)
+
+// Consumir materia prima directa desde bodega 4 hacia un proyecto específico (sin orden de compra)
+// Query: requisicionId, materiaId, cantidad
+router.route('/remove/materia/proyecto/')
+    .get(sacaMateriaDirectaBodegaEnProceso)
+
+// Transferir materia prima o producto terminado desde bodega principal a bodega en proceso y entregarlo a un proyecto
+// - Materia Prima: Bodega 1 → Bodega 4
+// - Producto Terminado: Bodega 2 → Bodega 5
+// Query: requisicionId, (materiaId | productoId), cantidad, medida (opcional, requerida para PT con mt2)
+router.route('/transfer/materia/proyecto/')
+    .get(transferirMateriaProyectoDesdeBodegaPrincipal)
 
 router.route('/get/kit/materia-prima-stock/')
     .get(getKitMateriaPrimaStock)

@@ -775,6 +775,269 @@ const getMovimientosBodega = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
+
+// SACAR MATERIA PRIMA DIRECTA DE BODEGA EN PROCESO PARA UN PROYECTO (SIN ORDEN DE COMPRA)
+// - Consume materia prima desde la bodega 4 (en proceso)
+// - Actualiza la necesidad del proyecto (necesidadProyecto) para esa materia
+// - No depende de comprasCotizacion / orden de compra
+const sacaMateriaDirectaBodegaEnProceso = async (req, res) => {
+    try {
+        const { requisicionId, materiaId, cantidad } = req.query;
+
+        // Validaciones básicas
+        if (!requisicionId || !materiaId) {
+            return res.status(400).json({ msg: 'Los parámetros requisicionId y materiaId son requeridos.' });
+        }
+
+        const cantidadNum = Number(cantidad || 0);
+        if (!cantidadNum || isNaN(cantidadNum) || cantidadNum <= 0) {
+            return res.status(400).json({ msg: 'La cantidad debe ser un número mayor a 0.' });
+        }
+
+        // Buscar la necesidad del proyecto para esta materia
+        const necesidad = await necesidadProyecto.findOne({
+            where: {
+                requisicionId: requisicionId,
+                materiaId: Number(materiaId)
+            }
+        });
+
+        if (!necesidad) {
+            return res.status(404).json({ msg: 'No hemos encontrado una necesidad de proyecto para esta materia y requisición.' });
+        }
+
+        // Obtener cotizacionId desde la requisición (para trazabilidad en movimientos)
+        const reqData = await requisicion.findByPk(requisicionId);
+        const cotizacionId = reqData ? reqData.cotizacionId : null;
+
+        // Consumir materia prima desde bodega 4 (en proceso)
+        // Usamos la función genérica que selecciona piezas y descuenta cantidades parciales
+        try {
+            const resultado = await seleccionarYTrasladarParaProyecto({
+                materiumId: Number(materiaId),
+                productoId: null,
+                cantidadNecesaria: cantidadNum,
+                ubicacionOrigenId: 4,           // Bodega en proceso (MP)
+                ubicacionDestinoId: null,       // Solo SALIDA (consumo), no se crea destino
+                refDoc: `SALIDA_REQUIS_${requisicionId}_MP_${materiaId}`,
+                preferWhole: false,             // Permitimos consumo parcial para esta salida directa
+                minUsableRemnant: 0.5,
+                applyChanges: true,
+                idsAdicionales: {
+                    cotizacionId: cotizacionId || null,
+                    comprasCotizacionId: null,
+                    usuarioId: req.user ? req.user.id : null
+                }
+            });
+
+            // Actualizar necesidadProyecto (cantidadEntregada y estado)
+            const entregadoActual = Number(necesidad.cantidadEntregada || 0);
+            const comprometido = Number(necesidad.cantidadComprometida || 0);
+            const nuevoTotalEntregado = entregadoActual + cantidadNum;
+
+            necesidad.cantidadEntregada = nuevoTotalEntregado;
+
+            if (nuevoTotalEntregado <= 0) {
+                necesidad.estado = 'reservado';
+            } else if (nuevoTotalEntregado > 0 && nuevoTotalEntregado < comprometido) {
+                necesidad.estado = 'parcial';
+            } else {
+                necesidad.estado = 'completo';
+            }
+
+            await necesidad.save();
+
+            return res.status(200).json({
+                ok: true,
+                msg: 'Materia prima consumida desde bodega en proceso para el proyecto.',
+                resultado,
+                necesidadProyecto: {
+                    id: necesidad.id,
+                    cantidadComprometida: comprometido,
+                    cantidadEntregada: nuevoTotalEntregado,
+                    estado: necesidad.estado
+                }
+            });
+        } catch (errSalida) {
+            console.error('Error al consumir materia desde bodega 4:', errSalida);
+            return res.status(400).json({ ok: false, msg: errSalida.message });
+        }
+
+    } catch (err) {
+        console.error(err);
+        return res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
+    }
+};
+
+// TRANSFERIR MATERIA PRIMA DESDE BODEGA 1 A BODEGA 4 Y ENTREGARLA A UN PROYECTO
+// - Saca stock de bodega 1 (materia prima)
+// - Lo ingresa a bodega 4 (en proceso)
+// - Actualiza el compromiso de la cotización (cotizacion_compromiso) para esa materia
+//   => "Se la entregamos" a ese proyecto, pero físicamente queda en bodega 4 lista para producción
+// TRANSFERIR MATERIA PRIMA O PRODUCTO TERMINADO DESDE BODEGA PRINCIPAL A BODEGA EN PROCESO Y ENTREGARLO A UN PROYECTO
+// - Materia Prima: Bodega 1 → Bodega 4
+// - Producto Terminado: Bodega 2 → Bodega 5
+// - Actualiza cotizacion_compromiso con la cantidad entregada
+// - Para productos terminados, aplica la regla de medida (mt2) para mover el item correcto
+const transferirMateriaProyectoDesdeBodegaPrincipal = async (req, res) => {
+    try {
+        const { requisicionId, materiaId, productoId, cantidad, medida } = req.query;
+
+        // Validar que venga uno u otro (no ambos, no ninguno)
+        if (!requisicionId || (!materiaId && !productoId)) {
+            return res.status(400).json({ 
+                msg: 'Los parámetros requisicionId y (materiaId o productoId) son requeridos. Solo uno de los dos últimos.' 
+            });
+        }
+
+        if (materiaId && productoId) {
+            return res.status(400).json({ 
+                msg: 'Debe proporcionar materiaId o productoId, no ambos.' 
+            });
+        }
+
+        const cantidadNum = Number(cantidad || 0);
+        if (!cantidadNum || isNaN(cantidadNum) || cantidadNum <= 0) {
+            return res.status(400).json({ msg: 'La cantidad debe ser un número mayor a 0.' });
+        }
+
+        // Obtener la requisición para conocer la cotización/proyecto
+        const reqData = await requisicion.findByPk(requisicionId);
+        if (!reqData || !reqData.cotizacionId) {
+            return res.status(404).json({ msg: 'No hemos encontrado la requisición o no tiene cotizacionId.' });
+        }
+        const cotizacionId = reqData.cotizacionId;
+
+        // Determinar si es materia prima o producto terminado
+        const esMateriaPrima = !!materiaId;
+        const esProductoTerminado = !!productoId;
+
+        // Configurar bodegas según el tipo
+        let ubicacionOrigenId, ubicacionDestinoId, refDoc, tipoItem;
+        
+        if (esMateriaPrima) {
+            ubicacionOrigenId = 1;  // Bodega materia prima
+            ubicacionDestinoId = 4; // Bodega en proceso (MP)
+            refDoc = `TRANSFER_REQUIS_${requisicionId}_MP_${materiaId}`;
+            tipoItem = 'Materia Prima';
+        } else {
+            ubicacionOrigenId = 2;  // Bodega producto terminado
+            ubicacionDestinoId = 5; // Bodega en proceso (PT)
+            refDoc = `TRANSFER_REQUIS_${requisicionId}_PT_${productoId}`;
+            tipoItem = 'Producto Terminado';
+        }
+
+        // Para productos terminados, validar y obtener la medida
+        let medidaProducto = null;
+        let unidadProducto = null;
+        if (esProductoTerminado) {
+            const searchProducto = await producto.findByPk(productoId, {
+                attributes: ['id', 'item', 'unidad', 'medida']
+            });
+            
+            if (!searchProducto) {
+                return res.status(404).json({ msg: 'Producto terminado no encontrado.' });
+            }
+            
+            unidadProducto = searchProducto.unidad || '';
+            
+            // Si la unidad es mt2, la medida es OBLIGATORIA para identificar el item correcto
+            if (unidadProducto === 'mt2') {
+                // Si el usuario envió medida, usarla; si no, usar la del producto
+                medidaProducto = medida || searchProducto.medida;
+                
+                if (!medidaProducto) {
+                    return res.status(400).json({ 
+                        msg: 'Para productos terminados con unidad mt2, la medida es requerida. Envíe el parámetro "medida" en el query.' 
+                    });
+                }
+            } else {
+                // Para otras unidades, no se requiere medida
+                medidaProducto = null;
+            }
+        }
+
+        // 1) TRANSFERIR FÍSICAMENTE: BODEGA ORIGEN -> BODEGA EN PROCESO
+        // Usamos la función genérica que ya sabe cortar/usar piezas
+        const resultado = await seleccionarYTrasladarParaProyecto({
+            materiumId: esMateriaPrima ? Number(materiaId) : null,
+            productoId: esProductoTerminado ? Number(productoId) : null,
+            cantidadNecesaria: cantidadNum,
+            ubicacionOrigenId: ubicacionOrigenId,
+            ubicacionDestinoId: ubicacionDestinoId,
+            refDoc: refDoc,
+            preferWhole: true,      // Preferimos piezas completas en el traslado
+            minUsableRemnant: 0.5,
+            applyChanges: true,
+            idsAdicionales: {
+                cotizacionId: cotizacionId,
+                comprasCotizacionId: null,
+                usuarioId: req.user ? req.user.id : null
+            }
+        });
+
+        // 2) ACTUALIZAR COMPROMISO DE LA COTIZACIÓN
+        // Para productos terminados con mt2, buscar el compromiso por productoId + medida
+        // Para otros casos, buscar solo por productoId o materiumId
+        if (esProductoTerminado && unidadProducto === 'mt2' && medidaProducto) {
+            // Buscar compromiso específico por productoId + medida + cotizacionId
+            const compromiso = await cotizacion_compromiso.findOne({
+                where: {
+                    productoId: Number(productoId),
+                    cotizacionId: cotizacionId,
+                    medida: medidaProducto
+                }
+            });
+
+            if (compromiso) {
+                const cantidadAnterior = Number(compromiso.cantidadEntregada || 0);
+                const cantidadComprometida = Number(compromiso.cantidadComprometida || 0);
+                const nuevoTotal = cantidadAnterior + cantidadNum;
+
+                compromiso.cantidadEntregada = nuevoTotal;
+                if (nuevoTotal >= cantidadComprometida) {
+                    compromiso.estado = 'completo';
+                } else if (nuevoTotal > 0) {
+                    compromiso.estado = 'parcial';
+                } else {
+                    compromiso.estado = 'reservado';
+                }
+
+                await compromiso.save();
+            } else {
+                console.warn(`No se encontró compromiso para productoId ${productoId}, cotizacionId ${cotizacionId}, medida ${medidaProducto}`);
+            }
+        } else {
+            // Para materia prima o productos sin medida, usar la función estándar
+            await updateCompromisoEntregado({
+                materiumId: esMateriaPrima ? Number(materiaId) : null,
+                productoId: esProductoTerminado ? Number(productoId) : null,
+                cotizacionId: cotizacionId,
+                cantidad: cantidadNum
+            });
+        }
+
+        return res.status(200).json({
+            ok: true,
+            msg: `${tipoItem} trasladado de bodega ${ubicacionOrigenId} a ${ubicacionDestinoId} y entregado al proyecto.`,
+            resultado,
+            proyecto: {
+                requisicionId: Number(requisicionId),
+                cotizacionId: cotizacionId
+            },
+            tipo: tipoItem,
+            medida: medidaProducto || null,
+            unidad: unidadProducto || null
+        });
+
+    } catch (err) {
+        console.error('Error en transferirMateriaProyectoDesdeBodegaPrincipal:', err);
+        return res.status(500).json({ 
+            msg: 'Ha ocurrido un error en la principal.',
+            error: err.message 
+        });
+    }
+};
 // Obtener bodega especifica productos
 const getBodegaItems = async(req, res) => {
     try{
@@ -2002,4 +2265,6 @@ module.exports = {
     sacaProductoBodegaEnProceso, // SACAR PRODUCTO TERMINADO DE BODEGA EN PROCESO
     getProductoTerminadoStock, // OBTENER STOCK DE PRODUCTO TERMINADO
     getKitMateriaPrimaStock, // Obtener materia prima necesaria y stock disponible para un kit
+    sacaMateriaDirectaBodegaEnProceso, // SACAR MATERIA PRIMA DIRECTA DE BODEGA 4 PARA UN PROYECTO
+    transferirMateriaProyectoDesdeBodegaPrincipal, // TRANSFERIR MP DE B1 A B4 Y ENTREGARLA A UN PROYECTO
 }  
