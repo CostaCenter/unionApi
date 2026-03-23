@@ -86,7 +86,7 @@ const getRequisicionDetallada = async (reqId) => {
             const kitDetallado = kitsConMateria.find(k => k.id === kitId);
             if (kitDetallado?.itemKits) {
                 kitDetallado.itemKits.forEach(item => {
-                    const key = `${item.materium.id}-${item.medida}`;
+                    const key = `${item.materium.id}`;
                     const cantidadTotal = Number(item.medida) * Number(cantidadKitEnCoti);
 
                     const medidaTrabajada = item.materium.unidad == 'mt2' ? item.materium.medida
