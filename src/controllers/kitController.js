@@ -28,7 +28,107 @@ const searchKitsForCoti = async (req, res) => {
                 // 1. Empezamos con la condición que siempre se aplica.
         const whereClause = {
             state: {
-                [Op.in]: ['completa', 'simulacion']
+                [Op.in]: ['completa']
+            }
+        };
+
+        // 2. Aplicamos la lógica condicional para la búsqueda.
+        if (!isNaN(query) && query.trim() !== '') {
+            // SI ES UN NÚMERO, busca solo por ID.
+            whereClause.id = query;
+        } else {
+            // SI ES TEXTO, busca solo por nombre.
+            whereClause.name = { [Op.iLike]: `%${query}%` };
+        }
+
+         // Si llega un 'cateriumId', se añade al filtro
+        if (cateriumId) {
+            whereClause.categoriumId = cateriumId; // Ajusta este nombre de campo si es necesario
+        }
+
+        // Si llega un 'lineaId', se añade al filtro
+        if (lineaId) {
+            whereClause.lineaId = lineaId;
+
+        }
+
+        const kits = await kit.findAll({
+            where: whereClause, 
+            include:[
+                {
+                    model: priceKit,
+                    where: {
+                        state: 'active'
+                    }
+                },
+                // ▼▼▼ INICIO DEL BLOQUE MODIFICADO ▼▼▼
+                // {
+                //     model: itemKit, // 1. La asociación ahora pasa por el modelo intermedio
+                //     attributes: { 
+                //         // Opcional: Excluye datos de la tabla intermedia para una respuesta más limpia
+                //         exclude: ['createdAt', 'updatedAt', 'kitId', 'materiaId', 'areaId'] 
+                //     },
+                //     include: [
+                //         {
+                //             model: materia, // 2. Incluimos Materia DENTRO de ItemKit
+                //             include:[{
+                //                 model: price,
+                //                 where: {
+                //                     state: 'active'
+                //                 },
+                //                 required: false // Se recomienda para no excluir kits si una materia no tiene precio activo
+                //             }]
+                //         },
+                //         {
+                //             model: areaKit // 3. Incluimos también el Área
+                //         }
+                //     ]
+                // },
+                {
+                model: categoria
+            },
+            {
+                model: linea,
+                include:[{
+                    model: percentage,
+                    where: {
+                        state: 'active'
+                    },
+                    required:false
+
+                }]
+            },{
+                model: extension
+            }],
+            attributes: { exclude: ['createdAt', 'updatedAt'] },
+            
+        }).catch((err => {
+            console.log(err);
+            return null; 
+        }));
+
+        if(!kits) return res.status(404).json({msg: 'No encontrado'})
+
+        res.status(200).json(kits);
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
+const searchKitsSimulacionForCoti = async (req, res) => {
+    try{
+        // Recibo dato por query
+        const { query,  cateriumId, lineaId  } = req.query; // Obtiene el parámetro de búsqueda desde la URL
+
+        if (!query) {
+            return res.status(400).json({ message: "Debes proporcionar un término de búsqueda." });
+        }
+
+                // 1. Empezamos con la condición que siempre se aplica.
+        const whereClause = {
+            state: {
+                [Op.in]: ['simulacion']
             }
         };
 
@@ -137,7 +237,7 @@ const searchKitsQuery = async(req, res) => {
             console.log(err);
             return null;
         }));
-
+ 
         if(!kits) return res.status(404).json({msg: 'No encontrado'})
 
         res.status(200).json(kits);
@@ -302,6 +402,7 @@ const getKitsFiltradosProduccion = async (req, res) => {
             categoriaId,
             extensionId,
             lineaId,
+            asesor,
             state
         } = req.query;
 
@@ -338,10 +439,12 @@ const getKitsFiltradosProduccion = async (req, res) => {
         if (lineaId) {
             whereConditions.lineaId = lineaId;
         }
-
+        if(asesor) {
+            whereConditions.userId = asesor;
+        }
         if (state) {
             whereConditions.state = state;
-        }
+        } 
 
         // ------------------------
         // 📡 Consulta
@@ -1041,7 +1144,9 @@ const clonarKitCotizacion = async (req, res) => {
             lineaId: kitOriginal.lineaId,
             categoriumId: kitOriginal.categoriumId,
             extensionId: kitOriginal.extensionId,
-            state: 'simulacion'
+            state: 'simulacion',
+            referenciaId: kitId,
+            userId: userId
         }, { transaction });
 
         // --- 3. CLONAR LAS ÁREAS Y CREAR UN MAPA DE IDs ---
@@ -1085,10 +1190,22 @@ const clonarKitCotizacion = async (req, res) => {
         // Confirmamos que toda la operación en la base de datos fue exitosa
         await transaction.commit();
 
+        const miniKit = await givePercentage(nuevoKit.id);
+
+        const costo = miniKit.itemKits.map((it) => getPromedio(it));
+        
+        const getPrice = costo.reduce((acc, costo) => acc + costo, 0);
+        
+        // ❗ IMPORTANTE: usar número, no string
+        const valor = Math.round(getPrice);
+        
+        // 🔥 CREAR / ACTUALIZAR PRECIO
+        await givePriceToKitServices(nuevoKit.id, valor);
+
         // --- 5. PASO FINAL: BUSCAMOS EL KIT COMPLETO PARA LA RESPUESTA ---
         const kitClonadoCompleto = await kit.findByPk(nuevoKit.id, {
             // Incluimos toda la información que el frontend necesita
-            include: [
+            include: [ 
                 {
                     model: itemKit,
                     include: [materia] // AHORA SÍ incluimos la materia prima
@@ -1469,6 +1586,7 @@ module.exports = {
     getAllKitCompleted, // Obtener solo kits completos
     updateItemOnKit, // Update ItemKits
     searchKitsForCoti, // Buscamos kits para cotizar
+    searchKitsSimulacionForCoti, // Buscamos kits para simulación
     deleteSegmento, // Eliminar segmento
 
 

@@ -31,7 +31,8 @@ const createKitServices = async(code, nombre, description, extension, linea, cat
             description,
             extensionId: extension,
             lineaId: linea,
-            categoriumId: categoria
+            categoriumId: categoria,
+            state: 'desarrollo'
         }).catch(err => {
             console.log(err);
             return 502;

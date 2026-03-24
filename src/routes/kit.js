@@ -6,7 +6,7 @@ const {
     getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit, needNewKit, 
     addMessageToRequerimiento, giveKitToRequerimiento, getAllRequerimientos, 
     getRequerimiento, readRequerimiento, clonarKitCotizacion, getKitsFiltradosProduccion, 
-    updateItemKitCalibre, getAllKitV2 
+    updateItemKitCalibre, getAllKitV2, searchKitsSimulacionForCoti 
 } = require('../controllers/kitController');
 const multer = require('multer');
 
@@ -25,6 +25,7 @@ router.route('/get/administration/kits').get(getProduccion);
 // ==================== GET - Búsquedas y Filtros ====================
 router.route('/get/s/search/').get(searchKitsQuery);
 router.route('/get/cotizar/search/').get(searchKitsForCoti);
+router.route('/get/cotizar/search/simulation').get(searchKitsSimulacionForCoti);
 router.route('/get/filter/search').get(getKitsFiltrados);
 router.route('/get/filter/querys/kits').get(getKitsFiltradosProduccion);
 router.route('/get/graph/groups/:inicio/:fin').get(getKitPorFecha);

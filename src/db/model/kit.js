@@ -24,5 +24,11 @@ module.exports = sequelize => {
         state: {
             type: DataTypes.STRING
         },  
+        userId: {
+            type: DataTypes.INTEGER
+        },
+        referenciaId: {
+            type: DataTypes.INTEGER
+        } 
     })  
 } 
