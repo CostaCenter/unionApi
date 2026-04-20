@@ -1350,40 +1350,45 @@ const deleteKit = async(req, res) => {
 // ITERAR SOFTWARE
 const givePriceToKit = async (req, res) => { 
     try{
-        // Primero obtenemos todos los kit.
-        const searchAllKits = await kit.findAll();
-        // Validamos
-        if(!searchAllKits) return res.status(404).json({msg: 'No hay click'});
-        // Los iteramos
-        searchAllKits.forEach(async (k) => {
-            //Obtenemos el kit
-            const miniKit = await givePercentage(k.id);
-            // Obtenemos la materia prima y obtenemos precios mapeando
-            const costo = miniKit.itemKits.map((it) => getPromedio(it))
-            // Reduzco y obtengo la suma promedio
-            const getPrice = costo.reduce((acc, costo) => acc + costo, 0);
-            // Lo convertimos en numero sin decimales.
-            const valor = Number(getPrice).toFixed(0)
+        const searchAllKits = await kit.findAll({ attributes: ['id', 'name'] });
 
-            // Envio valor y kit, para asignar precio
-            const sendingAddPrice = await givePriceToKitServices(miniKit.id, valor)
-            console.log(`${miniKit.name} - ${valor} COP`)
-        })
+        if(!searchAllKits || searchAllKits.length === 0) {
+            return res.status(404).json({ msg: 'No hay kits disponibles' });
+        }
 
-        res.status(200).json({msg: 'finish'})
-        // Buscamos la materia prima y medidas
+        // Responder de inmediato; el procesamiento continúa en segundo plano
+        res.status(202).json({ msg: 'Proceso iniciado', total: searchAllKits.length });
 
-        // Obtenemos el precio promedio
+        const BATCH_SIZE = 50;
 
-        // Si no existe el precio
-            // LO CREAMOS
+        for (let i = 0; i < searchAllKits.length; i += BATCH_SIZE) {
+            const batch = searchAllKits.slice(i, i + BATCH_SIZE);
 
-        // Caso contrario. 
-            // BUSCAMOS EL PRECIO ACTIVO. 
-            // LO DESACTIVAMOS Y CREAMOS EL NUEVO.
+            await Promise.allSettled(
+                batch.map(async (k) => {
+                    try {
+                        const miniKit = await givePercentage(k.id);
+                        if (!miniKit || !miniKit.itemKits || miniKit.itemKits.length === 0) return;
+
+                        const costo = miniKit.itemKits.map((it) => getPromedio(it));
+                        const getPrice = costo.reduce((acc, c) => acc + c, 0);
+                        const valor = Math.round(getPrice);
+
+                        await givePriceToKitServices(miniKit.id, valor);
+                        console.log(`✓ ${miniKit.name} - ${valor} COP`);
+                    } catch (kitErr) {
+                        console.error(`✗ Error procesando kit ${k.id}:`, kitErr.message);
+                    }
+                })
+            );
+        }
+
+        console.log('✅ givePriceToKit: proceso completado');
     }catch(err){
         console.log(err);
-        res.status(500).json({msG: 'Ha ocurrido un error en la principal.'});
+        if (!res.headersSent) {
+            res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
+        }
     }
 }
 
