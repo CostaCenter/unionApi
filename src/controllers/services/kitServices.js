@@ -20,7 +20,7 @@ const searchKit = async(nombre, extension) => {
     }
 }
 // Buscar un precio para u n MP de un PV
-const createKitServices = async(code, nombre, description, extension, linea, categoria) => {
+const createKitServices = async(code, nombre, description, extension, linea, categoria, userId) => {
     try{
         if(!nombre || !extension) return 501
         // Caso contrario, avanzamos...
@@ -32,7 +32,8 @@ const createKitServices = async(code, nombre, description, extension, linea, cat
             extensionId: extension,
             lineaId: linea,
             categoriumId: categoria,
-            state: 'desarrollo'
+            state: 'desarrollo',
+            userId
         }).catch(err => {
             console.log(err);
             return 502;
@@ -300,6 +301,36 @@ const getPromedio = (array) => { // 'array' es el objeto 'item' completo
 
     return 0;
 }
+
+
+// Buscar un precio para u n MP de un PV
+const createKitServicesFromCotizacion = async(code, nombre, description, extension, linea, categoria, userId) => {
+    try{
+        if(!nombre || !extension) return 501
+        // Caso contrario, avanzamos...
+
+        const addNewKit = await kit.create({
+            code, 
+            name: nombre,
+            description,
+            extensionId: extension,
+            lineaId: linea,
+            categoriumId: categoria,
+            state: 'solicitud',
+            userId
+        }).catch(err => {
+            console.log(err);
+            return 502;
+        });
+
+        return addNewKit;
+
+    }catch(err){
+        console.log(err);
+        return 500
+    }
+} 
+
 // Exportación
 module.exports = {
     searchKit, // Buscar Kit
@@ -310,4 +341,5 @@ module.exports = {
     givePercentage, // Obtener un kit con sus precios y detalles
     getPromedio, // Obtener promedio
     givePriceToKitServices, // Cambiar precio
+    createKitServicesFromCotizacion, // Crear un Kit desde cotización
 }

@@ -6,7 +6,8 @@ const {
     getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit, needNewKit, 
     addMessageToRequerimiento, giveKitToRequerimiento, getAllRequerimientos, 
     getRequerimiento, readRequerimiento, clonarKitCotizacion, getKitsFiltradosProduccion, 
-    updateItemKitCalibre, getAllKitV2, searchKitsSimulacionForCoti 
+    updateItemKitCalibre, getAllKitV2, searchKitsSimulacionForCoti, 
+    needNewKitFromCotizacion
 } = require('../controllers/kitController');
 const multer = require('multer');
 
@@ -60,5 +61,9 @@ router.route('/requerimiento/put/read').put(readRequerimiento);
 router.route('/requerimiento/put/give/kit').put(giveKitToRequerimiento);
 router.route('/requerimientos/post/add/message')
     .post(upload.array('images'), addMessageToRequerimiento);
+
+// ==================== POST - Necesitan un kit o producto desde la cotización ====================
+router.route('/requerimientos/post/add/kit/cotizacion').post(needNewKitFromCotizacion);
+
 
 module.exports = router; 

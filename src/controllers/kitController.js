@@ -3,7 +3,7 @@ const { materia, producto, user, proveedor, extension,
     price, kit, requiredKit, adjuntRequired, adjunt, areaKit, itemKit, priceKit, linea, 
     categoria, percentage, Op, db, literal } = require('../db/db');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
-const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState, givePercentage, getPromedio, givePriceToKitServices } = require('./services/kitServices');
+const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState, givePercentage, getPromedio, givePriceToKitServices, createKitServicesFromCotizacion } = require('./services/kitServices');
 const { addLog } = require('./services/logServices');
 const dayjs = require('dayjs');
 const sequelize = kit.sequelize; // <-- Aquí obtienes la instancia
@@ -940,6 +940,25 @@ const addItem = async (req, res) => {
             const updateKit = await changeState(kitId, 'desarrollo')
             return res 
         })
+        .then(async (res ) => {
+            const searchReq = await requiredKit.findOne({
+                where: {
+                    kitId: kitId,
+                    state: 'petition'
+                }
+            });
+
+            if(searchReq){
+                const updateReq = await requiredKit.update({
+                    state: 'creando'
+                }, {
+                    where: {
+                        id: searchReq.id
+                    }
+                });
+            }
+            return res;
+        })
         .then(async (res) => {
             // Entidad, entidadId, accion, detalle, fecha, userId
             const a = await addLog('kits', kitId, 'add', 'Añadió materia prima al kit', userId, mtId)
@@ -1539,7 +1558,44 @@ const addMessageToRequerimiento = async (req, res) => {
     }
 }
 
+// Necesitan un kit o producto desde la cotización
+// Enviar requerimiento de nuevo kit
+const needNewKitFromCotizacion = async (req, res) => {
+    try{
+        // Recibimos datos por body
+        const { nombre, description, extension, tipo, userId, cotizacionId, kitId, productoId } = req.body;
+        // Validamos
+        if(!nombre || !description  ) return res.status(400).json({msg: 'Parámetros no son validos'});
+        // Caso contrario, avanzamos
 
+        if(kitId){
+            const addKit = await createKitServicesFromCotizacion(null, nombre, description, extension, null, null, userId)
+
+            console.log(addKit)
+            if(!addKit || addKit == 501) return res.status(502).json({msg: 'No hemos logrado crear este kit'});
+            // Caso contrario, avanzamos
+            
+            const solitud = await requiredKit.create({
+                nombre, 
+                description,
+                userId,
+                tipo: 'kit',
+                cotizacionId,
+                kitId: addKit.id,
+                state: 'petition',
+            })
+            if(!solitud) return res.status(502).json({msg: 'No hemos logrado crear este requerimiento'});
+            // Caso contrario, avanzamos
+            res.status(201).json(solitud)
+        }else if(productoId){
+            
+        }
+        
+    }catch(err){
+        console.log(err);
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal'})
+    }
+}
 
 // Cancelar requerimiento
 const cancelRequired = async (req, res) => {
@@ -1601,4 +1657,5 @@ module.exports = {
     giveKitToRequerimiento, // Dar kit a un requerimiento - para creando
     readRequerimiento, // Leer desde producción
     getAllKitV2, // Obtener todos los kits V2
+    needNewKitFromCotizacion, // Necesitan un kit o producto desde la cotización
 }

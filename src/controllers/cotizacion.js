@@ -1,6 +1,6 @@
 const express = require('express');
 const { client, service, requisicion, serviceCotizacion, kit, itemKit, extension, producto, materia, cotizacion, versionCotizacion, notaCotizacion, armado, armadoCotizacion, kitCotizacion, productoCotizacion, areaCotizacion, user,
-    condicionesPago, planPago, db} = require('../db/db');
+    condicionesPago, planPago, requiredKit, db} = require('../db/db');
 const { Op } = require('sequelize');
 const { createCotizacion, addItemToCotizacionServices, addSuperKitToCotizacionServices, addProductoToCotizacionServices, addServiceToCotizacionServices } = require('./services/cotizacionServices');
 const { createRequisicion } = require('./services/requsicionService');
@@ -227,7 +227,9 @@ const getAllCotizaciones = async(req, res) => {
                     }
                 },
                 attributes: { exclude: ['updatedAt']},
-                include:[ {model: areaCotizacion,
+                include:[ {model: requiredKit, 
+                    include: [{model: kit}]
+                }, {model: areaCotizacion,
                     include:[
                         // 1. Mantenemos la relación belongsToMany para 'kit' como la tenías
                         { 
@@ -347,7 +349,9 @@ const getCotizacion = async(req, res) => {
         // Caso contrario, consultados
         const searchCoti = await cotizacion.findByPk(cotiId, {
             attributes: { exclude: ['updatedAt']},
-            include:[{
+            include:[{model: requiredKit, 
+                include: [{model: kit}]
+            }, {
                 model: condicionesPago
             }, {model: areaCotizacion, 
                 include:[

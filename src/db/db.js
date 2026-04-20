@@ -431,6 +431,22 @@ kit.hasMany(requiredKit, {
 });  
 requiredKit.belongsTo(kit); 
 
+
+kit.hasMany(requiredKit, {
+  onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
+});  
+requiredKit.belongsTo(kit);
+
+producto.hasMany(requiredKit, {
+  onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
+});  
+requiredKit.belongsTo(producto);
+
+cotizacion.hasMany(requiredKit, {
+  onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
+});  
+requiredKit.belongsTo(cotizacion);
+
 user.hasMany(requiredKit);
 requiredKit.belongsTo(user);
 

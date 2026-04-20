@@ -48,7 +48,7 @@ cloudinary.config({
 
 // Rutas
 app.get('/', (req, res) => {
-  res.send('Running Server to CRM comercial - Costa Center');
+  res.send('Running Server to ERP Union - Costa Center');
 });
 
 app.get('/sign/user', isAuthenticated, (req, res) => {

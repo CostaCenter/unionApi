@@ -882,24 +882,32 @@ const getNecesidadProject = async (req, res) => {
 
         if (!data) return res.status(404).json({ msg: 'No encontrado' });
 
-        // 2. Procesamos los KITS (Normal, pueden ir en paralelo)
-        const promesasKits = data.resumenKits.map(r => 
-            giveNecesidadToProject(requisicionId, r.id, null, r.cantidad)
-        );
-        await Promise.all(promesasKits);
+        // 🔍 DEBUG: Ver qué datos llegan
+        console.log('📊 CANTIDADES RECIBIDAS:', JSON.stringify(data.cantidades, null, 2));
+        console.log('📊 RESUMEN PRODUCTOS:', JSON.stringify(data.resumenProductos, null, 2));
+        console.log('📊 RESUMEN KITS:', JSON.stringify(data.resumenKits, null, 2));
 
-        // 3. SOLUCIÓN PARA PRODUCTOS: Procesamiento secuencial
-        // Usamos un for...of para que no se pisen entre ellos en la DB
+        // 2. Procesamos los KITS (incluyen medida si está disponible)
+        for (const r of data.resumenKits) {
+            console.log(`🔵 Procesando KIT - ID: ${r.id}, Cantidad: ${r.cantidad}`);
+            await giveNecesidadToProject(
+                requisicionId, 
+                r.id, 
+                null, 
+                r.cantidad, 
+                r.medida || null
+            );
+        }
+
+        // 3. Procesamos los PRODUCTOS (incluyen medida)
         for (const prod of data.resumenProductos) {
-            // Importante: Si r.medida existe en el objeto 'data' pero no en tu tabla,
-            // podrías concatenarlo al campo 'observaciones' o 'descripcion' 
-            // de giveNecesidadToProject si esa función lo permite.
-            
+            console.log(`🟢 Procesando PRODUCTO - ID: ${prod.id}, Cantidad: ${prod.cantidad}`);
             await giveNecesidadToProject(
                 requisicionId, 
                 null, 
                 prod.id, 
-                prod.cantidad
+                prod.cantidad,
+                prod.medida || null
             );
         }
 

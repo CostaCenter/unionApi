@@ -195,27 +195,32 @@ const addMateriaRequisicion = async (
         requisicionId,
         materiaId,
         cantidad,
-        medida
+        medida,
+        t
     ) => {
-    
+
     if (!materiaId || !requisicionId) {
         throw new Error('INVALID_PARAMS');
     }
-  
+
     const existente = await itemRequisicion.findOne({
       where: {
         requisicionId,
         materiumId: materiaId
-      }
+      },
+      transaction: t
     });
-  
+
+    // Si ya existe, SUMAR la cantidad al registro existente
     if (existente) {
+      existente.cantidad = Number(existente.cantidad) + Number(cantidad);
+      await existente.save({ transaction: t });
       return {
         created: false,
         item: existente
       };
     }
-  
+
     const nuevoItem = await itemRequisicion.create({
       requisicionId,
       materiumId: materiaId,
@@ -223,8 +228,8 @@ const addMateriaRequisicion = async (
       cantidadEntrega: 0,
       estado: 'pendiente',
       medida
-    });
-  
+    }, { transaction: t });
+
     return {
       created: true,
       item: nuevoItem
@@ -235,12 +240,30 @@ const addProductoRequisicion = async (
     requisicionId,
     productoId,
     cantidad,
-    medida = null
+    medida = null,
+    t
     ) => {
     if (!productoId || !requisicionId) {
         throw new Error('INVALID_PARAMS');
     }
 
+    const existente = await itemRequisicion.findOne({
+        where: {
+            requisicionId,
+            productoId
+        },
+        transaction: t
+    });
+
+    // Si ya existe, SUMAR la cantidad al registro existente
+    if (existente) {
+        existente.cantidad = Number(existente.cantidad) + Number(cantidad);
+        await existente.save({ transaction: t });
+        return {
+            created: false,
+            item: existente
+        };
+    }
 
     const nuevoItem = await itemRequisicion.create({
         requisicionId,
@@ -249,7 +272,7 @@ const addProductoRequisicion = async (
         cantidadEntrega: 0,
         estado: 'pendiente',
         medida
-    });
+    }, { transaction: t });
 
     return {
         created: true,
@@ -265,15 +288,24 @@ const getNecesidadProjecto = async (requisicionId, t) => {
     const data = await getRequisicionDetallada(requisicionId); 
     if (!data) return null;
 
+    // 🔍 DEBUG: Ver qué datos llegan
+    console.log('📊 [getNecesidadProjecto] CANTIDADES RECIBIDAS:', JSON.stringify(data.cantidades, null, 2));
+    console.log('📊 [getNecesidadProjecto] RESUMEN PRODUCTOS:', JSON.stringify(data.resumenProductos, null, 2));
+    console.log('📊 [getNecesidadProjecto] RESUMEN KITS:', data.resumenKits.length, 'kits');
+
     // 2. Kits → paralelo
+    console.log('🔵 Procesando', data.resumenKits.length, 'kits...');
     await Promise.all(
-        data.resumenKits.map(r =>
-            giveNecesidadToProject(requisicionId, r.id, null, r.cantidad, r.medida, t)
-        )
+        data.resumenKits.map(r => {
+            console.log(`🔵 Kit ID: ${r.id}, Cantidad: ${r.cantidad}, Medida: ${r.medida || 'N/A'}`);
+            return giveNecesidadToProject(requisicionId, r.id, null, r.cantidad, r.medida, t);
+        })
     );
 
     // 3. Productos → secuencial
+    console.log('🟢 Procesando', data.resumenProductos.length, 'productos...');
     for (const prod of data.resumenProductos) {
+        console.log(`🟢 Producto ID: ${prod.id}, Cantidad: ${prod.cantidad}, Medida: ${prod.medida || 'N/A'}`);
         await giveNecesidadToProject(
             requisicionId,
             null,
@@ -290,21 +322,48 @@ const getNecesidadProjecto = async (requisicionId, t) => {
 const giveNecesidadToProject = async (requisicionId, kitId, productoId, cantidad, medida, t) => {
     try {
         // Validación básica: Si no hay cantidad o es 0, no creamos registro
-        if (!cantidad || cantidad <= 0 || !requisicionId) return false;
+        if (!cantidad || cantidad <= 0 || !requisicionId) {
+            console.log(`⚠️ Validación falló - Req: ${requisicionId}, Kit: ${kitId}, Prod: ${productoId}, Cantidad: ${cantidad}`);
+            return false;
+        }
 
-        await necesidadProyecto.create({
-            cantidadComprometida: Number(cantidad),
-            cantidadEntrega: 0,
-            requisicionId: requisicionId,
-            kitId: kitId || null, 
-            productoId: productoId || null,
-            medida: medida || null
-        }, { transaction: t });
+        // Construir whereClause dinámicamente (solo campos no null)
+        const whereClause = { requisicionId };
+        if (kitId) whereClause.kitId = kitId;
+        if (productoId) whereClause.productoId = productoId;
+
+        console.log(`🔍 Buscando con WHERE:`, whereClause);
+
+        // Buscar o crear el registro
+        const [record, created] = await necesidadProyecto.findOrCreate({
+            where: whereClause,
+            defaults: {
+                cantidadComprometida: Number(cantidad),
+                medida: medida || null
+            },
+            transaction: t
+        });
+
+        // Si es nuevo, establecer cantidadEntrega en 0 (si el campo existe)
+        if (created && record.cantidadEntrega !== undefined) {
+            record.cantidadEntrega = 0;
+            await record.save({ transaction: t });
+        }
+
+        // Si ya existía, SUMAR la nueva cantidad al registro existente
+        if (!created) {
+            const cantidadAnterior = record.cantidadComprometida;
+            record.cantidadComprometida = Number(record.cantidadComprometida) + Number(cantidad);
+            await record.save({ transaction: t });
+            console.log(`✅ Actualizado necesidad - Req: ${requisicionId}, Kit: ${kitId || 'N/A'}, Prod: ${productoId || 'N/A'}, Cantidad anterior: ${cantidadAnterior}, Cantidad sumada: ${cantidad}, Nueva cantidad total: ${record.cantidadComprometida}`);
+        } else {
+            console.log(`✅ Creada necesidad - Req: ${requisicionId}, Kit: ${kitId || 'N/A'}, Prod: ${productoId || 'N/A'}, Cantidad: ${cantidad}`);
+        }
  
         return true;
     } catch (error) {
         // Logueamos el error para que tú como administrador sepas qué falló
-        console.error(`Error asignando necesidad (Req: ${requisicionId}, Kit: ${kitId}, Prod: ${productoId}):`, error.message);
+        console.error(`❌ Error asignando necesidad (Req: ${requisicionId}, Kit: ${kitId}, Prod: ${productoId}):`, error.message);
         // Lanzamos el error para que el Promise.all del controlador lo capture
         throw error; 
     }
