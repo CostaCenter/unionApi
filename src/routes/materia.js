@@ -1,6 +1,6 @@
 const express = require('express');
-const { addMateria, updateMateria, getAllMateria, getItem, buscarPorQuery, clonarMateriaPrima, deleteMP, getMateriaComportamiento, getAllPriceMateriaProvider, searchMateriaByQuery } = require('../controllers/materiaControllers');
-const { getAllProducto, addProductoTerminado, updateProducto, getItemProducto, buscarPorQueryProducto, deleteProducto, clonarProducto, getProduccionPorFecha, getProductosFiltrados, getProduccion, getAllPriceProductoTerminadoProvider } = require('../controllers/finalProduct');
+const { addMateria, updateMateria, getAllMateria, getItem, buscarPorQuery, clonarMateriaPrima, deleteMP, getMateriaComportamiento, getAllPriceMateriaProvider, searchMateriaByQuery, buscarMateriaPorProveedorQuery } = require('../controllers/materiaControllers');
+const { getAllProducto, addProductoTerminado, updateProducto, getItemProducto, buscarPorQueryProducto, buscarProductoPorProveedorQuery, deleteProducto, clonarProducto, getProduccionPorFecha, getProductosFiltrados, getProduccion, getAllPriceProductoTerminadoProvider } = require('../controllers/finalProduct');
 const { newService, updateService, getServices } = require('../controllers/serviciosCotizacion');
 
 const router = express.Router();
@@ -15,6 +15,9 @@ router.route('/get/prices/all/:materiaId/:proveedorId')
 
 router.route('/searchByQuery')
     .get(searchMateriaByQuery)  
+
+router.route('/searching/provider')
+    .get(buscarMateriaPorProveedorQuery)
     
 router.route('/search')
     .get(getAllMateria)
@@ -54,6 +57,9 @@ router.route('/producto/clonar/:productoId/:userId')
 
 router.route('/producto/searching')
     .get(buscarPorQueryProducto)
+
+router.route('/producto/searching/provider')
+    .get(buscarProductoPorProveedorQuery)
 
 
 router.route('/producto/get/graph/groups/:inicio/:fin')

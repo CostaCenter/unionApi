@@ -671,8 +671,8 @@ const getRequisicion = async (req, res) => {
 // Actualizamos item compra
 const updateItemCompra = async (req, res) => {
     try{
-        const { cantidadEntrega, comprasItemCotizacion, requisicionId, materiaId, productoId } = req.body
-        if(!cantidadEntrega || !comprasItemCotizacion) return res.status(400).json({msg: 'Parametros no validos'})
+        const { cantidadEntrega, comprasItemCotizacion, cantidadIgualar, requisicionId, materiaId, productoId } = req.body
+        if(!comprasItemCotizacion) return res.status(400).json({msg: 'Parametros no validos'})
         
         // Buscar requisicion
         const searchRequisicion = await requisicion.findByPk(requisicionId);
@@ -687,17 +687,35 @@ const updateItemCompra = async (req, res) => {
         });
 
 
-        const updateTooNecesidad = await cotizacion_compromiso.update({
-            cantidadEntregada: cantidadEntrega,
-        }, {
-            where: {
-                cotizacionId: searchRequisicion.cotizacionId,
-                materiaId: materiaId,
-                productoId: productoId               
-            }
-        });
+        if(cantidadIgualar){
+            const updateTooNecesidad = await cotizacion_compromiso.update({
+                cantidadEntregada: cantidadEntrega,
+            }, {
+                where: {
+                    cotizacionId: searchRequisicion.cotizacionId,
+                    materiaId: materiaId,
+                    productoId: productoId,
+                    cantidadComprometida: cantidadIgualar                
+                }
+            });
 
-        res.status(200).json({msg: 'Actualizado con exito'});
+            return res.status(200).json({msg: 'Actualizado con exito'});
+
+        }else{
+            const updateTooNecesidad = await cotizacion_compromiso.update({
+                cantidadEntregada: cantidadEntrega,
+            }, {
+                where: {
+                    cotizacionId: searchRequisicion.cotizacionId,
+                    materiaId: materiaId,
+                    productoId: productoId               
+                }
+            });
+
+            return res.status(200).json({msg: 'Actualizado con exito'});
+        }
+        
+
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});

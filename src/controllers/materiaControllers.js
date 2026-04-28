@@ -367,6 +367,66 @@ const searchMateriaByQuery = async (req, res) => {
     }
 };
 
+/**
+ * GET query: proveedorId (obligatorio), q opcional (id numérico o texto en item/description).
+ * Solo devuelve materias que tengan precio activo para ese proveedor; incluye el registro price y proveedor.
+ */
+const buscarMateriaPorProveedorQuery = async (req, res) => {
+    try {
+        const { proveedorId, q } = req.query;
+
+        if (!proveedorId) {
+            return res.status(400).json({ msg: 'proveedorId es obligatorio' });
+        }
+
+        const pid = Number(proveedorId);
+        if (Number.isNaN(pid)) {
+            return res.status(400).json({ msg: 'proveedorId no es válido' });
+        }
+
+        const whereMateria = {};
+        if (q !== undefined && q !== null && String(q).trim() !== '') {
+            const qs = String(q).trim();
+            if (!isNaN(qs) && qs !== '') {
+                whereMateria.id = Number(qs);
+            } else {
+                whereMateria[Op.or] = [
+                    { item: { [Op.iLike]: `%${qs}%` } },
+                    { description: { [Op.iLike]: `%${qs}%` } }
+                ];
+            }
+        }
+
+        const resultados = await materia.findAll({
+            where: whereMateria,
+            include: [{
+                model: price,
+                where: {
+                    proveedorId: pid,
+                    state: 'active'
+                },
+                required: true,
+                include: [{
+                    model: proveedor,
+                    attributes: ['id', 'type', 'nit', 'nombre']
+                }]
+            }, {
+                model: categoria,
+                required: false
+            }, {
+                model: linea,
+                required: false
+            }],
+            order: [['description', 'ASC'], [price, 'createdAt', 'DESC']]
+        });
+
+        res.status(200).json(resultados);
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ msg: 'Error al buscar materia prima por proveedor' });
+    }
+};
+
 
 // Consultar toda la matería prima
 const getAllMateria = async(req, res) => {
@@ -724,6 +784,7 @@ const updateToInactivePCMP = async (req, res) => {
 
 module.exports = { 
     buscarPorQuery, // Buscador
+    buscarMateriaPorProveedorQuery, // Búsqueda por texto/id filtrada por proveedor (con precio activo)
     getItem, // Obtener item individual
     searchMateriaByQuery, // Buscar por query
     getAllMateria, // Obtener todos los registros de la tabla. Sin filtros**
