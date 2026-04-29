@@ -1,5 +1,5 @@
 const express = require('express');
-const { producto, productPrice, percentage, proveedor, price, linea, categoria, db, literal } = require('../db/db');
+const { producto, productPrice, percentage, proveedor, price, linea, categoria, db, literal, stock } = require('../db/db');
 const { Op } = require('sequelize');
 const { searchPrice, addPriceMt, updatePriceState, searchProductPrice, updateProductPriceState, addPricePT,  } = require('./services/priceServices');
 const dayjs = require('dayjs');
@@ -29,7 +29,13 @@ const buscarPorQueryProducto = async (req, res) => {
 
       const resultados = await producto.findAll({
         where: whereClause, 
-        include:[{
+        include:[    {
+            model: stock,
+            where: {  
+                ubicacionId: 2
+            },
+            required: false
+        },{
             model: productPrice,
             where: {
                 state: 'active'

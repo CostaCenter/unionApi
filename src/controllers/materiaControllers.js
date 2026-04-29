@@ -1,5 +1,5 @@
 const express = require('express');
-const { materia, proveedor, price, linea, categoria, comprasCotizacion, comprasCotizacionItem, db } = require('../db/db');
+const { materia, proveedor, price, linea, categoria, stock, comprasCotizacion, comprasCotizacionItem, db } = require('../db/db');
 const { Op } = require('sequelize');
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 
@@ -352,6 +352,13 @@ const searchMateriaByQuery = async (req, res) => {
 
         const materiaFound = await materia.findAll({
             where: whereCondition,
+            include:[{
+                model: stock    ,
+                where: {
+                    ubicacionId: 1
+                },
+                required: false
+            }],
             order: [['description', 'ASC']]
         });
 

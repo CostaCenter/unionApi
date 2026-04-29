@@ -70,6 +70,8 @@ async function createStockIngresoController(req, res) {
         comprasCotizacionId: comprasCotizacionId || null
       }, t); // ✅ Pasar transacción externa
     
+
+      console.log(ingresoResult);
       // 2. Actualizar estado del item (dentro de MISMA transacción)
       if(comprasCotizacionItemId){
           const [affectedRows] = await comprasCotizacionItem.update({
