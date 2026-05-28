@@ -1608,7 +1608,7 @@ const giveKitToRequerimiento = async(req, res) => {
 const addMessageToRequerimiento = async (req, res) => {
     try{
         // Recibimos datos por body
-        let { message, type, userId, reqId, userToNotify } = req.body;
+        let { message, type, userId, reqId, userToNotify, para } = req.body;
         
         // 🔄 PARSEAR userToNotify SI VIENE COMO STRING JSON
         if (typeof userToNotify === 'string') {
@@ -1625,6 +1625,7 @@ const addMessageToRequerimiento = async (req, res) => {
         console.log('- userId:', userId);
         console.log('- reqId:', reqId);
         console.log('- userToNotify (después de parsing):', userToNotify);
+        console.log('- para:', para);
         console.log('- archivos:', req.files?.length || 0);
         
         // Validamos que haya userId y reqId, y que haya mensaje O archivos
@@ -1680,6 +1681,17 @@ const addMessageToRequerimiento = async (req, res) => {
         try {
             console.log(`🚀 Procesando notificaciones para mensaje en requerimiento #${reqId}`);
             
+            // 🎯 DETERMINAR URL SEGÚN EL PARÁMETRO "PARA"
+            let notificationUrl = "/produccion/solicitudes/"; // URL por defecto
+            
+            if (para === "cliente") {
+                notificationUrl = "/comercial/solicitudes/";
+            } else if (para === "produccion") {
+                notificationUrl = "/produccion/solicitudes/";
+            }
+            
+            console.log(`📍 URL de notificación configurada: ${notificationUrl} (para: ${para})`);
+            
             // SOPORTE DE ARRAY: Validamos que userToNotify sea un array con elementos
             if (userToNotify && Array.isArray(userToNotify) && userToNotify.length > 0) {
                 console.log(`📋 Array de destinatarios recibido:`, userToNotify);
@@ -1701,7 +1713,7 @@ const addMessageToRequerimiento = async (req, res) => {
                             title: `💬 Nuevo mensaje en Requerimiento #${reqId}`,
                             body: message || "Ha enviado un archivo adjunto...",
                             category: "requerimientos", // Consistencia con nuestro enrutador del frontend
-                            actionUrl: "/comercial/solicitudes/",
+                            actionUrl: notificationUrl,
                             targetId: reqId,
                             groupKey: `req_chat_${reqId}` // VARCHAR dinámico para agrupar mensajes de este requerimiento
                         }, req);
