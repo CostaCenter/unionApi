@@ -12,6 +12,9 @@ module.exports = sequelize => {
         type: {
             type: DataTypes.STRING
         },
+        name: {
+            type: DataTypes.STRING
+        },
     })  
 }
 // Esta tabla es la relación directa con todos los precios.

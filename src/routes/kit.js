@@ -22,7 +22,7 @@ router.route('/getAll/general').get(getKits);
 router.route('/getAll/general/v2').get(getAllKitV2);
 router.route('/getAllComplete').get(getAllKitCompleted);
 router.route('/get/administration/kits').get(getProduccion);
-
+  
 // ==================== GET - Búsquedas y Filtros ====================
 router.route('/get/s/search/').get(searchKitsQuery);
 router.route('/get/cotizar/search/').get(searchKitsForCoti);

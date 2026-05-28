@@ -4,12 +4,13 @@ const { Sequelize, DataTypes, INTEGER } = require('sequelize');
 const cloudinary = require('cloudinary');
 const cors = require('cors');
 const { Server } = require("socket.io");
-const http = require("http"); // ojo, aquí estaba mal escrito
+const http = require("http");
 require('dotenv').config();
 
 const { db, Op } = require('./src/db/db');
 const routes = require('./src/routes');
 const { isAuthenticated } = require('./src/controllers/user');
+const { initSocketManager } = require('./src/sockets/socketManager');
 
 const app = express();
 const server = http.createServer(app); // Usamos http para socket.io
@@ -62,37 +63,57 @@ app.get('/sign/user', isAuthenticated, (req, res) => {
 
 app.use('/api', routes);
 
-// Socket.IO - conexión
-io.on("connection", (socket) => {
-  console.log("Cliente conectado:", socket.id);
+// Endpoint temporal para probar las notificaciones en tiempo real
+app.get('/api/test-notification/:userId', (req, res) => {
+  const io = req.app.get("io");
 
-  // Unirse a un requerimiento
-  socket.on("join:requerimiento", (reqId) => {
-    socket.join(`req:${reqId}`);
-    console.log(`Cliente ${socket.id} se unió a la sala req:${reqId}`);
-  });
+  const mockNotification = {
+    id: "prueba-123",
+    title: "¡Prueba de Fuego Exitosa! 🎉",
+    body: "Si estás viendo esto, el sistema de notificaciones está vivo.",
+    category: "system",
+    created_at: new Date()
+  };
 
-  // Cuando se envía un mensaje
-  socket.on("send:message", (reqId, mensaje) => {
-    console.log(`Mensaje en req:${reqId}:`, mensaje);
+  // 📢 CAMBIA ESTA LÍNEA: Quitamos el .to(userId) para que vaya a TODO el mundo
+  io.emit("new_notification", mockNotification);
 
-    // Aquí puedes guardar el mensaje en la BD...
-
-    // Emitir a TODOS en la sala, incluido el emisor
-    io.to(`req:${reqId}`).emit("requerimiento:update", {
-      reqId,
-      mensaje
-    });
-  });
-
-  socket.on("disconnect", () => {
-    console.log("Cliente desconectado:", socket.id);
+  return res.json({ 
+    success: true, 
+    msg: "Notificación global enviada con éxito" 
   });
 });
 
+// Socket.IO — inicializar manager (auth, salas privadas + eventos existentes)
+initSocketManager(io);
+
 // Levantar servidor
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  db.sync({ force: false });
-  console.log(`Server running on port ${PORT}`);
+server.listen(PORT, async () => {
+  try {
+    // Sincronizar sin alter para evitar problemas con datos existentes
+    await db.sync({ force: false });
+    
+    // Agregar columna 'name' a tabla adjunts si no existe (de forma segura)
+    try {
+      await db.query(`
+        DO $$ 
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'adjunts' AND column_name = 'name'
+          ) THEN
+            ALTER TABLE adjunts ADD COLUMN name VARCHAR(255);
+          END IF;
+        END $$;
+      `);
+      console.log('✅ Columna "name" verificada/agregada a tabla adjunts');
+    } catch (colError) {
+      console.log('⚠️  Error al agregar columna name:', colError.message);
+    }
+    
+    console.log(`Server running on port ${PORT}`);
+  } catch (err) {
+    console.error('❌ Error en sincronización de base de datos:', err);
+  }
 });

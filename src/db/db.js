@@ -76,6 +76,9 @@ const modelUserPermission = require('./model/user_permission');
 // COMPRAS
 const modelComprarGrupo = require('./model/comprar_grupo');
 
+// NOTIFICACIONES
+const modelNotification = require('./model/notification');
+
 const entorno = true;     
 let dburl = entorno ? 'postgresql://postgres:mnfPuhNtcXTFhlurmBdslUBftGBFMZau@centerbeam.proxy.rlwy.net:41058/railway' : 'postgres:postgres:123@localhost:5432/u';
  
@@ -181,6 +184,9 @@ modelUserPermission(sequelize);
 // COMPRAS
 modelComprarGrupo(sequelize);
 
+// NOTIFICACIONES
+modelNotification(sequelize);
+
 const { user, proveedor, linea, categoria, materia, producto, extension, price, productPrice, kit, requiredKit, adjuntRequired, adjunt, areaKit, itemKit, priceKit,
   client, versionCotizacion, cotizacion, condicionesPago, planPago, pagoRecibido, notaCotizacion, armado, kitCotizacion, requisicion, itemRequisicion, armadoCotizacion, armadoKits, log, percentage,
   permission, service, serviceCotizacion, user_permission, areaCotizacion, productoCotizacion,
@@ -189,7 +195,8 @@ const { user, proveedor, linea, categoria, materia, producto, extension, price, 
   comprasCotizacion, ComprasCotizacionProyecto, comprasCotizacionItem, itemToProject, necesidadProyecto,
   stock, stockMove,
   areaProduction, itemAreaProduction,
-  remision, itemRemision
+  remision, itemRemision,
+  notification
 } = sequelize.models; 
 
 
@@ -1031,9 +1038,22 @@ itemRemision.belongsTo(producto, {
   foreignKey: 'productoId' 
 });
 
+// ----------------------------------------------------------
+// NOTIFICACIONES - SISTEMA DE NOTIFICACIONES EN TIEMPO REAL
+// ----------------------------------------------------------
+// Notification <-> User
+// Una notificación pertenece a un usuario
+user.hasMany(notification, {
+  foreignKey: 'userId',
+  onDelete: 'CASCADE'
+});
+notification.belongsTo(user, { 
+  foreignKey: 'userId' 
+});
+
 // Exportamos.
 module.exports = {  
     ...sequelize.models,
     db: sequelize,
     Op
-}        
+}         

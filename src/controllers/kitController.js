@@ -8,6 +8,7 @@ const { addLog } = require('./services/logServices');
 const dayjs = require('dayjs');
 const sequelize = kit.sequelize; // <-- Aquí obtienes la instancia
 const multer = require('multer');
+const { sendNotification, sendNotificationFromController } = require('./services/notificationServices');
 
 
 const cloudinary = require('cloudinary').v2;
@@ -949,6 +950,9 @@ const addItem = async (req, res) => {
             });
 
             if(searchReq){
+
+                const searchRequerimiento = await requiredKit.findByPk(searchReq.id);
+                if(!searchReq) return res.status(404).json({msg: 'No hay resultados'});
                 const updateReq = await requiredKit.update({
                     state: 'creando'
                 }, {
@@ -956,6 +960,27 @@ const addItem = async (req, res) => {
                         id: searchReq.id
                     }
                 });
+
+                
+                try {
+                    console.log(`🚀 Intentando enviar notificación de que el requerimiento se ha empezado a construir, para requerimiento  al usuario ${userId}`);
+                    
+                    const notificationResult = await sendNotificationFromController({
+                        userId: searchReq.userId, // Para la prueba te llegará al mismo que lo crea, luego pones el ID del Admin
+                        title: "¡Tu requerimiento casi esta listo!",
+                        body: `El requerimiento "${searchRequerimiento.nombre}" ahora esta al 70%. ¡Falta poco!.`,
+                        category: "Solicitudes de Kits",
+                        actionUrl: `/comercial/solicitudes/`, 
+                        targetId: searchRequerimiento.id,
+                        groupKey: null // <--- Temporalmente null para evitar el error de tipo
+                    }, req);
+                    
+                    console.log(`✅ Resultado de la notificación:`, notificationResult);
+                } catch (notificationError) {
+                    // Evitamos que un fallo en la notificación tumbe la creación del requerimiento principal
+                    console.error("❌ Error disparando la notificación:", notificationError);
+                }
+        
             }
             return res;
         })
@@ -1308,6 +1333,26 @@ const changeStateToKit = async(req, res) => {
                 }
             })
             console.log('Actualizado')
+            
+            try {
+                console.log(`🚀 Intentando enviar notificación de que el requerimiento ha sido terminado, para requerimiento  al usuario ${userId}`);
+                
+                const notificationResult = await sendNotificationFromController({
+                    userId: searchReq.userId, // Para la prueba te llegará al mismo que lo crea, luego pones el ID del Admin
+                    title: "¡Tu requerimiento esta listo!",
+                    body: `El requerimiento "${searchReq.nombre}" esta listo.`,
+                    category: "Solicitudes de Kits",
+                    actionUrl: `/comercial/solicitudes/`, 
+                    targetId: searchReq.id,
+                    groupKey: null // <--- Temporalmente null para evitar el error de tipo
+                }, req);
+                
+                console.log(`✅ Resultado de la notificación:`, notificationResult);
+            } catch (notificationError) {
+                // Evitamos que un fallo en la notificación tumbe la creación del requerimiento principal
+                console.error("❌ Error disparando la notificación:", notificationError);
+            }
+
         }
         res.status(200).json({msg: 'Actualizado con éxito'})
     }catch(err){
@@ -1466,6 +1511,21 @@ const needNewKit = async (req, res) => {
         })
 
         if(!solitud) return res.status(502).json({msg: 'No hemos logrado crear esto'});
+        try {
+            await sendNotification({
+                userId: 1, // Para la prueba te llegará al mismo que lo crea, luego pones el ID del Admin
+                title: "💥 Nuevo requerimiento pendiente",
+                body: `Se ha creado la solicitud: "${nombre}"`,
+                category: "requerimientos",
+                actionUrl: `/requerimientos/${solitud.id}`,
+                targetId: solitud.id,
+                groupKey: "requerimientos_pendientes_global" // <--- Agrupación inteligente activa
+            });
+        } catch (notificationError) {
+            // Evitamos que un fallo en la notificación tumbe la creación del requerimiento principal
+            console.error("Error disparando la notificación:", notificationError);
+        }
+
         // Caso contrario, avanzamos
         res.status(201).json(solitud)
     }catch(err){
@@ -1478,10 +1538,13 @@ const needNewKit = async (req, res) => {
 const readRequerimiento = async(req, res) => {
     try{
         // Avanzamos, recibimos requerimiento por body
-        const { reqId } = req.body;
+        const { reqId, userId } = req.body;
         // Validamos
         if(!reqId) return res.status(400).json({msg: 'El parámetro no es validos'});
         // Caso contrario, avanzamos
+
+        const searchReq = await requiredKit.findByPk(reqId);
+        if(!searchReq) return res.status(404).json({msg: 'No hay resultados'});
 
         const updateThat = await requiredKit.update({
             leidoProduccion: true
@@ -1490,6 +1553,25 @@ const readRequerimiento = async(req, res) => {
                 id: reqId
             }
         });
+
+        try {
+            console.log(`🚀 Intentando enviar notificación de que el requerimiento ha sido leido, para requerimiento  al usuario ${userId}`);
+            
+            const notificationResult = await sendNotificationFromController({
+                userId, // Para la prueba te llegará al mismo que lo crea, luego pones el ID del Admin
+                title: "¡Requerimiento leído!",
+                body: `El requerimiento "${searchReq.nombre}" ha sido revisado en producción.`,
+                category: "Solicitudes de Kits",
+                actionUrl: `/comercial/solicitudes/`, 
+                targetId: reqId,
+                groupKey: null // <--- Temporalmente null para evitar el error de tipo
+            }, req);
+            
+            console.log(`✅ Resultado de la notificación:`, notificationResult);
+        } catch (notificationError) {
+            // Evitamos que un fallo en la notificación tumbe la creación del requerimiento principal
+            console.error("❌ Error disparando la notificación:", notificationError);
+        }
 
         res.status(200).json({msg: 'actualizado'});
 
@@ -1526,27 +1608,65 @@ const giveKitToRequerimiento = async(req, res) => {
 const addMessageToRequerimiento = async (req, res) => {
     try{
         // Recibimos datos por body
-        const { message, type, userId, reqId } = req.body;
-        // Validamos
-        if(!message || !userId || !reqId) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        let { message, type, userId, reqId, userToNotify } = req.body;
+        
+        // 🔄 PARSEAR userToNotify SI VIENE COMO STRING JSON
+        if (typeof userToNotify === 'string') {
+            try {
+                userToNotify = JSON.parse(userToNotify);
+            } catch (parseError) {
+                console.error('❌ Error parseando userToNotify:', parseError);
+                userToNotify = [];
+            }
+        }
+
+        console.log('🎯 DATOS RECIBIDOS EN addMessageToRequerimiento:');
+        console.log('- message:', message);
+        console.log('- userId:', userId);
+        console.log('- reqId:', reqId);
+        console.log('- userToNotify (después de parsing):', userToNotify);
+        console.log('- archivos:', req.files?.length || 0);
+        
+        // Validamos que haya userId y reqId, y que haya mensaje O archivos
+        if(!userId || !reqId) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        if(!message && (!req.files || req.files.length === 0)) {
+            return res.status(400).json({msg: 'Debe proporcionar un mensaje o archivos adjuntos.'});
+        }
+        
         // Caso contrario, avanzamos...
         const addMessage = await adjuntRequired.create({
-            mesagge: message,
+            mesagge: message || ' ', // Espacio si solo hay archivos
             type,
             requiredKitId: reqId,
             userId
         });
-        // 2️⃣ Si vienen imágenes, subirlas y guardarlas en tabla aparte
-        const imagenesSubidas = await Promise.all(
+        // 2️⃣ Si vienen archivos (imágenes o documentos), subirlos y guardarlos en tabla aparte
+        const archivosSubidos = await Promise.all(
             req.files.map(async (file) => {
+                let tipoArchivo = 'documento';
+
+                if (file.mimetype.startsWith('image/')) {
+                    tipoArchivo = 'imagen';
+                } else if (file.mimetype.includes('pdf')) {
+                    tipoArchivo = 'pdf';
+                } else if (file.mimetype.includes('word') || file.mimetype.includes('document')) {
+                    tipoArchivo = 'word';
+                } else if (file.mimetype.includes('excel') || file.mimetype.includes('spreadsheet')) {
+                    tipoArchivo = 'excel';
+                }
+
+                // resource_type 'auto': Cloudinary detecta el tipo correctamente
+                // y preserva el archivo intacto (PDF, XLSX, DOCX, imágenes)
                 const result = await cloudinary.uploader.upload(
                     `data:${file.mimetype};base64,${file.buffer.toString('base64')}`,
-                    { folder: 'requerimientosKits' }
+                    { folder: 'requerimientosKits', resource_type: 'auto' }
                 );
+
                 return {
                     adjuntRequiredId: addMessage.id,
                     adjunt: result.secure_url,
-                    type: 'imagen'
+                    type: tipoArchivo,
+                    name: file.originalname
                 };
             })
         );
@@ -1554,7 +1674,56 @@ const addMessageToRequerimiento = async (req, res) => {
 
         if(!addMessage) return res.status(502).json({msg: 'No hemos logrado crear esto.'});
         // Caso contrario, avanzamos
-        await adjunt.bulkCreate(imagenesSubidas);
+        await adjunt.bulkCreate(archivosSubidos);
+
+        // 🔔 NOTIFICACIONES AGRUPADAS PREMIUM CON MÚLTIPLES DESTINATARIOS
+        try {
+            console.log(`🚀 Procesando notificaciones para mensaje en requerimiento #${reqId}`);
+            
+            // SOPORTE DE ARRAY: Validamos que userToNotify sea un array con elementos
+            if (userToNotify && Array.isArray(userToNotify) && userToNotify.length > 0) {
+                console.log(`📋 Array de destinatarios recibido:`, userToNotify);
+                
+                // Recorremos cada recipientUserId usando un bucle
+                for (const recipientUserId of userToNotify) {
+                    try {
+                        // EXCLUSIÓN DEL EMISOR: Validamos que el recipientUserId no sea igual al userId actual
+                        if (recipientUserId === userId) {
+                            console.log(`⚠️  Saltando notificación para userId ${recipientUserId} - es el mismo que envía el mensaje`);
+                            continue; // Evitamos spam innecesario al emisor
+                        }
+
+                        // NOTIFICACIÓN AGRUPADA PREMIUM: Ejecutamos sendNotificationFromController
+                        console.log(`📨 Enviando notificación agrupada a usuario ${recipientUserId} para requerimiento #${reqId}`);
+                        
+                        const notificationResult = await sendNotificationFromController({
+                            userId: recipientUserId,
+                            title: `💬 Nuevo mensaje en Requerimiento #${reqId}`,
+                            body: message || "Ha enviado un archivo adjunto...",
+                            category: "requerimientos", // Consistencia con nuestro enrutador del frontend
+                            actionUrl: "/comercial/solicitudes/",
+                            targetId: reqId,
+                            groupKey: `req_chat_${reqId}` // VARCHAR dinámico para agrupar mensajes de este requerimiento
+                        }, req);
+                        
+                        console.log(`✅ Notificación enviada exitosamente a usuario ${recipientUserId}:`, notificationResult);
+                        
+                    } catch (individualNotificationError) {
+                        // Log del error individual sin detener el bucle
+                        console.error(`❌ Error enviando notificación individual a usuario ${recipientUserId}:`, individualNotificationError);
+                    }
+                }
+                
+                console.log(`🎉 Procesamiento de notificaciones completado para ${userToNotify.length} destinatarios`);
+                
+            } else {
+                console.log(`ℹ️  No se encontraron destinatarios válidos para notificar (userToNotify: ${userToNotify})`);
+            }
+            
+        } catch (notificationError) {
+            // Evitamos que un fallo en las notificaciones tumbe la creación del mensaje principal
+            console.error("❌ Error general en el sistema de notificaciones:", notificationError);
+        }
 
         res.status(201).json(addMessage)
     }catch(err){
@@ -1590,6 +1759,26 @@ const needNewKitFromCotizacion = async (req, res) => {
                 state: 'petition',
             })
             if(!solitud) return res.status(502).json({msg: 'No hemos logrado crear este requerimiento'});
+
+            try {
+                console.log(`🚀 Intentando enviar notificación para requerimiento ${solitud.id} al usuario 1`);
+                
+                const notificationResult = await sendNotificationFromController({
+                    userId: 1, // Para la prueba te llegará al mismo que lo crea, luego pones el ID del Admin
+                    title: "Nuevo requerimiento pendiente",
+                    body: `Nueva solicitud de Kit: "${nombre}"`,
+                    category: "Solicitudes de Kits",
+                    actionUrl: `/produccion/solicitudes/`,
+                    targetId: solitud.id,
+                    groupKey: null // <--- Temporalmente null para evitar el error de tipo
+                }, req);
+                
+                console.log(`✅ Resultado de la notificación:`, notificationResult);
+            } catch (notificationError) {
+                // Evitamos que un fallo en la notificación tumbe la creación del requerimiento principal
+                console.error("❌ Error disparando la notificación:", notificationError);
+            }
+     
             // Caso contrario, avanzamos
             res.status(201).json(solitud)
         }else if(productoId){

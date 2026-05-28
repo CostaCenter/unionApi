@@ -22,6 +22,8 @@ const inventarioVersion = require('./inventarioRoutesVersion'); // Rutas version
 const stockRoutes = require('./stock'); // Rutas de stock
 const productionRoutes = require('./production'); // Rutas de producción
 const remisionRoutes = require('./remision'); // Rutas de remisión
+const notificationRoutes = require('./notification'); // Rutas de notificaciones
+const downloadRoutes = require('./download'); // Proxy de descarga de archivos
 
 router.use('/users', userRoutes);
 router.use('/proveedores', proveedorRoutes);
@@ -47,5 +49,8 @@ router.use('/stock', stockRoutes);
 router.use('/production', productionRoutes);
 
 router.use('/remision', remisionRoutes);
+
+router.use('/notifications', notificationRoutes);
+router.use('/download', downloadRoutes);
 
 module.exports = router; 
