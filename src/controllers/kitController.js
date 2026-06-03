@@ -404,7 +404,9 @@ const getKitsFiltradosProduccion = async (req, res) => {
             extensionId,
             lineaId,
             asesor,
-            state
+            state,
+            page = 1,
+            limit = 50
         } = req.query;
 
         const whereConditions = {};
@@ -445,12 +447,19 @@ const getKitsFiltradosProduccion = async (req, res) => {
         }
         if (state) {
             whereConditions.state = state;
-        } 
+        }
 
         // ------------------------
-        // 📡 Consulta
+        // 📡 Paginación
         // ------------------------
-        const kitsResults = await kit.findAll({
+        const pageNumber = parseInt(page) || 1;
+        const limitNumber = parseInt(limit) || 50;
+        const offset = (pageNumber - 1) * limitNumber;
+
+        // ------------------------
+        // 📡 Consulta con paginación
+        // ------------------------
+        const { count, rows: kitsResults } = await kit.findAndCountAll({
             where: whereConditions,
             include: [
                 { model: categoria },
@@ -458,10 +467,20 @@ const getKitsFiltradosProduccion = async (req, res) => {
                 { model: extension }
             ],
             order: [['createdAt', 'DESC']],
-            limit: 30, 
+            limit: limitNumber,
+            offset: offset,
         });
 
-        return res.status(200).json(kitsResults);
+        return res.status(200).json({
+            kits: kitsResults,
+            pagination: {
+                total: count,
+                page: pageNumber,
+                limit: limitNumber,
+                totalPages: Math.ceil(count / limitNumber),
+                hasMore: pageNumber < Math.ceil(count / limitNumber)
+            }
+        });
 
     } catch (err) {
         console.error('Error al filtrar kits:', err);
@@ -1824,6 +1843,157 @@ const cancelRequired = async (req, res) => {
     }
 }
 
+// Copiar receta de un KIT a otro
+const copyKitRecipe = async (req, res) => {
+    const transaction = await db.transaction();
+    try {
+        const { sourceKitId, targetKitId, userId } = req.body;
+        
+        // Validamos los parámetros
+        if (!sourceKitId || !targetKitId) {
+            await transaction.rollback();
+            return res.status(400).json({ msg: 'Parámetros inválidos. Se requiere sourceKitId y targetKitId.' });
+        }
+
+        // Validamos que no sean el mismo kit
+        if (sourceKitId === targetKitId) {
+            await transaction.rollback();
+            return res.status(400).json({ msg: 'No puedes copiar la receta del mismo KIT.' });
+        }
+
+        // --- 1. OBTENER KIT FUENTE CON SU RECETA ---
+        const kitFuente = await kit.findByPk(sourceKitId, {
+            include: [
+                { 
+                    model: itemKit,
+                    include: [materia]
+                },
+                { model: areaKit }
+            ],
+            transaction
+        });
+
+        if (!kitFuente) {
+            await transaction.rollback();
+            return res.status(404).json({ msg: 'No se encontró el KIT de referencia.' });
+        }
+
+        // --- 2. VALIDAR QUE EL KIT OBJETIVO EXISTE ---
+        const kitObjetivo = await kit.findByPk(targetKitId, { transaction });
+
+        if (!kitObjetivo) {
+            await transaction.rollback();
+            return res.status(404).json({ msg: 'No se encontró el KIT objetivo.' });
+        }
+
+        // --- 3. ELIMINAR CONTENIDO ACTUAL DEL KIT OBJETIVO ---
+        // Eliminamos todos los items actuales
+        await itemKit.destroy({
+            where: { kitId: targetKitId },
+            transaction
+        });
+
+        // Eliminamos todas las áreas actuales
+        await areaKit.destroy({
+            where: { kitId: targetKitId },
+            transaction
+        });
+
+        // --- 4. COPIAR ÁREAS DEL KIT FUENTE AL KIT OBJETIVO ---
+        const areaIdMap = new Map();
+
+        if (kitFuente.areaKits && kitFuente.areaKits.length > 0) {
+            // Preparamos los datos de las nuevas áreas
+            const nuevasAreasData = kitFuente.areaKits.map(area => ({
+                name: area.name,
+                kitId: targetKitId, // Asignadas al kit objetivo
+                state: area.state
+            }));
+
+            // Creamos las nuevas áreas
+            const nuevasAreasCreadas = await areaKit.bulkCreate(nuevasAreasData, { 
+                transaction, 
+                returning: true 
+            });
+
+            // Mapeamos IDs viejos con nuevos
+            kitFuente.areaKits.forEach((areaVieja, index) => {
+                areaIdMap.set(areaVieja.id, nuevasAreasCreadas[index].id);
+            });
+        }
+
+        // --- 5. COPIAR ITEMS (RECETA) DEL KIT FUENTE AL KIT OBJETIVO ---
+        if (kitFuente.itemKits && kitFuente.itemKits.length > 0) {
+            const nuevosItems = kitFuente.itemKits.map(item => ({
+                cantidad: item.cantidad,
+                medida: item.medida,
+                calibre: item.calibre,
+                materiaId: item.materiaId,
+                areaId: item.areaId ? areaIdMap.get(item.areaId) : null,
+                kitId: targetKitId // Asignados al kit objetivo
+            }));
+
+            await itemKit.bulkCreate(nuevosItems, { transaction });
+        }
+
+        // --- 6. ACTUALIZAR ESTADO DEL KIT OBJETIVO A DESARROLLO ---
+        await kit.update({
+            state: 'desarrollo'
+        }, {
+            where: { id: targetKitId },
+            transaction
+        });
+
+        // --- 7. REGISTRAR LOG DE LA ACCIÓN ---
+        if (userId) {
+            await addLog(
+                'kits', 
+                targetKitId, 
+                'update', 
+                `Copió receta desde KIT #${sourceKitId}`, 
+                userId
+            );
+        }
+
+        // Confirmamos la transacción
+        await transaction.commit();
+
+        // --- 8. OBTENER EL KIT ACTUALIZADO COMPLETO PARA LA RESPUESTA ---
+        const kitActualizado = await kit.findByPk(targetKitId, {
+            include: [
+                {
+                    model: itemKit,
+                    include: [
+                        {
+                            model: materia,
+                            include: [{
+                                model: price,
+                                where: { state: 'active' },
+                                required: false
+                            }]
+                        },
+                        { model: areaKit }
+                    ]
+                },
+                { model: areaKit },
+                { model: categoria },
+                { model: linea },
+                { model: extension }
+            ]
+        });
+
+        return res.status(200).json({ 
+            msg: 'Receta copiada exitosamente',
+            kit: kitActualizado
+        });
+
+    } catch (err) {
+        if (transaction) await transaction.rollback();
+        console.error('Error en copyKitRecipe:', err);
+        res.status(500).json({ msg: 'Ha ocurrido un error al copiar la receta.' });
+    }
+}
+
 
 module.exports = { 
     searchKitsQuery, // SearchKits With Query
@@ -1850,6 +2020,7 @@ module.exports = {
     searchKitsForCoti, // Buscamos kits para cotizar
     searchKitsSimulacionForCoti, // Buscamos kits para simulación
     deleteSegmento, // Eliminar segmento
+    copyKitRecipe, // Copiar receta de un KIT a otro
 
 
     givePriceToKit, // Obtener precio

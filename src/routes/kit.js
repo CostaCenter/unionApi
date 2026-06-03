@@ -7,7 +7,7 @@ const {
     addMessageToRequerimiento, giveKitToRequerimiento, getAllRequerimientos, 
     getRequerimiento, readRequerimiento, clonarKitCotizacion, getKitsFiltradosProduccion, 
     updateItemKitCalibre, getAllKitV2, searchKitsSimulacionForCoti, 
-    needNewKitFromCotizacion
+    needNewKitFromCotizacion, copyKitRecipe
 } = require('../controllers/kitController');
 const multer = require('multer');
 
@@ -47,6 +47,7 @@ router.route('/add/item').put(updateItemOnKit);
 router.route('/add/segmento').put(updateSegmento);
 router.route('/update/item/calibre').put(updateItemKitCalibre);
 router.route('/updateState').put(changeStateToKit);
+router.route('/copy-recipe').put(copyKitRecipe);
 
 // ==================== DELETE ====================
 router.route('/delete/:kitId/:userId').delete(deleteKit);
