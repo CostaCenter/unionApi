@@ -6,7 +6,7 @@ const cors = require('cors');
 const { Server } = require("socket.io");
 const http = require("http");
 require('dotenv').config();
-
+ 
 const { db, Op } = require('./src/db/db');
 const routes = require('./src/routes');
 const { isAuthenticated } = require('./src/controllers/user');

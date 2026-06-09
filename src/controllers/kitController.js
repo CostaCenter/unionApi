@@ -1958,6 +1958,42 @@ const copyKitRecipe = async (req, res) => {
         // Confirmamos la transacción
         await transaction.commit();
 
+        const searchReq = await requiredKit.findOne({
+            where: {
+                kitId: targetKitId,
+                state: 'petition'
+            }
+        });
+
+        if (searchReq) {
+            const searchRequerimiento = await requiredKit.findByPk(searchReq.id);
+            await requiredKit.update({
+                state: 'creando'
+            }, {
+                where: {
+                    id: searchReq.id
+                }
+            });
+
+            try {
+                console.log(`🚀 Intentando enviar notificación de que el requerimiento se ha empezado a construir, para requerimiento al usuario ${searchReq.userId}`);
+
+                const notificationResult = await sendNotificationFromController({
+                    userId: searchReq.userId,
+                    title: "¡Tu requerimiento casi esta listo!",
+                    body: `El requerimiento "${searchRequerimiento.nombre}" ahora esta al 70%. ¡Falta poco!.`,
+                    category: "Solicitudes de Kits",
+                    actionUrl: `/comercial/solicitudes/`,
+                    targetId: searchRequerimiento.id,
+                    groupKey: null
+                }, req);
+
+                console.log(`✅ Resultado de la notificación:`, notificationResult);
+            } catch (notificationError) {
+                console.error("❌ Error disparando la notificación:", notificationError);
+            }
+        }
+
         // --- 8. OBTENER EL KIT ACTUALIZADO COMPLETO PARA LA RESPUESTA ---
         const kitActualizado = await kit.findByPk(targetKitId, {
             include: [
