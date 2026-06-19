@@ -8,6 +8,7 @@ const { nuevaCompra, addItemToCotizacion, updateItems, giveNecesidadToProject, g
 const dayjs = require('dayjs');
 const { render } = require('ejs');
 const { createCompromiso } = require('./services/inventarioServices');
+const { sendNotificationFromController, sendNotificationToMultipleUsersFromController } = require('./services/notificationServices');
 
 // Obtener todas las requisiciones
 const getAllRequisiciones = async (req, res) => {
@@ -1370,7 +1371,11 @@ const changeToCompras = async (req, res) => {
         const searchData = await comprasCotizacion.findOne({
             where: {
                 id: comprasCotizacionId,
-            }
+            },
+            include: [{
+                model: proveedor,
+                attributes: ['id', 'nombre']
+            }]
         });
 
         if(!searchData) return res.status(404).json({msg: 'No hemos encotrado esto.'});
@@ -1395,6 +1400,26 @@ const changeToCompras = async (req, res) => {
         })
 
         if(!updateData) return res.status(501).json({msg: 'No hemos logrado actualizar esto'});
+
+        try {
+            const nombreOrden = searchData.name || `Orden #${comprasCotizacionId}`;
+            const nombreProveedor = searchData.proveedor?.nombre;
+
+            await sendNotificationFromController({
+                userId: 4,
+                title: 'Orden de compra pendiente de aprobación',
+                body: nombreProveedor
+                    ? `La orden "${nombreOrden}" del proveedor ${nombreProveedor} está pendiente de tu aprobación.`
+                    : `La orden "${nombreOrden}" está pendiente de tu aprobación.`,
+                category: 'Ordenes de compra',
+                actionUrl: `/admin/ordenCompras/?orden=${comprasCotizacionId}`,
+                targetId: comprasCotizacionId,
+                groupKey: `orden_compra_${comprasCotizacionId}`
+            }, req);
+        } catch (notificationError) {
+            console.error('Error enviando notificación de orden de compra:', notificationError);
+        }
+
         // Caso contrario, avanzamos
         res.status(200).json({msg: 'Actualizado...'});
     }catch(err){
@@ -1415,7 +1440,12 @@ const changeToComprasToComprado = async (req, res) => {
       const hoy = dayjs().format('YYYY-MM-DD');
   
       // 1️⃣ Validar existencia de la cotización
-      const cotizacion = await comprasCotizacion.findByPk(comprasCotizacionId);
+      const cotizacion = await comprasCotizacion.findByPk(comprasCotizacionId, {
+        include: [{
+          model: proveedor,
+          attributes: ['id', 'nombre']
+        }]
+      });
   
       if (!cotizacion) {
         return res.status(404).json({ msg: 'No se encontró la cotización' });
@@ -1444,6 +1474,24 @@ const changeToComprasToComprado = async (req, res) => {
   
       // 4️⃣ 🔥 Actualizar cantidades + estados de requisición
       await updateItems(comprasCotizacionId);
+
+      try {
+        const nombreOrden = cotizacion.name || `Orden #${comprasCotizacionId}`;
+        const nombreProveedor = cotizacion.proveedor?.nombre;
+
+        await sendNotificationToMultipleUsersFromController({
+          title: 'Orden de compra aprobada',
+          body: nombreProveedor
+            ? `La orden "${nombreOrden}" del proveedor ${nombreProveedor} fue aprobada y marcada como comprada.`
+            : `La orden "${nombreOrden}" fue aprobada y marcada como comprada.`,
+          category: 'Ordenes de compra',
+          actionUrl: `/compras/?orden=${comprasCotizacionId}`,
+          targetId: comprasCotizacionId,
+          groupKey: `orden_compra_aprobada_${comprasCotizacionId}`
+        }, [1, 2, 3], req);
+      } catch (notificationError) {
+        console.error('Error enviando notificaciones de orden aprobada:', notificationError);
+      }
   
       // 5️⃣ Respuesta final
       return res.status(200).json({

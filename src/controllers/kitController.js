@@ -1677,11 +1677,23 @@ const addMessageToRequerimiento = async (req, res) => {
 
                 // resource_type 'auto': Cloudinary detecta el tipo correctamente
                 // y preserva el archivo intacto (PDF, XLSX, DOCX, imágenes)
-                const result = await cloudinary.uploader.upload(
-                    `data:${file.mimetype};base64,${file.buffer.toString('base64')}`,
-                    { folder: 'requerimientosKits', resource_type: 'auto' }
-                );
-
+               
+                // const result = await cloudinary.uploader.upload(
+                //     `data:${file.mimetype};base64,${file.buffer.toString('base64')}`,
+                //     { folder: 'requerimientosKits', resource_type: 'auto' }
+                // );
+                const isPDF = file.mimetype.includes('pdf');
+const result = await cloudinary.uploader.upload(
+    `data:${file.mimetype};base64,${file.buffer.toString('base64')}`,
+    { 
+        folder: 'requerimientosKits', 
+        resource_type: isPDF ? 'image' : 'auto',
+        type: 'upload',
+        access_mode: 'public'
+    }
+);
+                
+                console.log('URL generada:', result.secure_url); // ← agrega esto
                 return {
                     adjuntRequiredId: addMessage.id,
                     adjunt: result.secure_url,

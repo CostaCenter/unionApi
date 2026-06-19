@@ -156,6 +156,67 @@ const sendNotificationFromController = async (params, req) => {
 };
 
 /**
+ * Envía la misma notificación a múltiples usuarios
+ * @param {Object} params - Parámetros de la notificación (sin userId)
+ * @param {number[]} userIds - IDs de los usuarios destinatarios
+ * @param {Object} [io] - Instancia de Socket.io
+ * @returns {Promise<Object>} Resultado consolidado de la operación
+ */
+const sendNotificationToMultipleUsers = async (params, userIds = [], io = null) => {
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+        return {
+            success: false,
+            error: 'Debes proporcionar al menos un userId',
+            message: 'No se enviaron notificaciones'
+        };
+    }
+
+    const results = [];
+
+    for (const userId of userIds) {
+        try {
+            const result = await sendNotification({ ...params, userId }, io);
+            results.push({ userId, ...result });
+        } catch (error) {
+            console.error(`❌ Error enviando notificación a usuario ${userId}:`, error);
+            results.push({
+                userId,
+                success: false,
+                error: error.message
+            });
+        }
+    }
+
+    const successCount = results.filter((result) => result.success).length;
+
+    return {
+        success: successCount > 0,
+        total: userIds.length,
+        successCount,
+        failedCount: userIds.length - successCount,
+        results,
+        message: `Notificaciones enviadas: ${successCount}/${userIds.length}`
+    };
+};
+
+/**
+ * Helper para enviar notificaciones a múltiples usuarios desde un controlador
+ * @param {Object} params - Parámetros de la notificación (sin userId)
+ * @param {number[]} userIds - IDs de los usuarios destinatarios
+ * @param {Object} req - Objeto request de Express
+ * @returns {Promise<Object>} Resultado consolidado de la operación
+ */
+const sendNotificationToMultipleUsersFromController = async (params, userIds, req) => {
+    const io = req.app.get('io');
+
+    if (!io) {
+        console.error('⚠️ Instancia de Socket.io NO encontrada en req.app - Verifica la configuración del servidor');
+    }
+
+    return await sendNotificationToMultipleUsers(params, userIds, io);
+};
+
+/**
  * Función para marcar múltiples notificaciones como vistas por groupKey
  * @param {number} userId - ID del usuario
  * @param {string} groupKey - Clave del grupo a marcar como visto
@@ -192,5 +253,7 @@ const markGroupAsSeen = async (userId, groupKey) => {
 module.exports = {
     sendNotification,
     sendNotificationFromController,
+    sendNotificationToMultipleUsers,
+    sendNotificationToMultipleUsersFromController,
     markGroupAsSeen
 };

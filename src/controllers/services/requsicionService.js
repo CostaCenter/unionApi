@@ -424,128 +424,105 @@ const addItemToCotizacion = async(body) => {
     return addItem
 }
  
-const updateItems = async (cotizacionId) => {
-    const searchCotizacion = await comprasCotizacionItem.findAll({
-      where: { comprasCotizacionId: cotizacionId },
-      include: [{ model: itemToProject }],
-    });
-  
-    if (!searchCotizacion || searchCotizacion.length === 0) return;
-  
-    const requisicionesAfectadas = new Set();
-  
-    // 1️⃣ Actualizamos cantidades entregadas
-    for (const l of searchCotizacion) {
-        if(l.materiumId){
-            for (const r of l.itemToProjects) {
-                const item = await itemRequisicion.findOne({
-                    where: {
-                        materiumId: l.materiumId,
-                        requisicionId: r.requisicionId
-                    }
-                });
+/** Asignaciones por proyecto: itemToProject o requisicionId directo en la línea de compra */
+const getAsignacionesProyecto = (linea) => {
+    const proyectos = linea.itemToProjects || [];
+    if (proyectos.length > 0) {
+        return proyectos.map((r) => ({
+            requisicionId: r.requisicionId,
+            cantidad: Number(r.cantidad || 0),
+        }));
+    }
+    if (linea.requisicionId) {
+        return [{
+            requisicionId: linea.requisicionId,
+            cantidad: Number(linea.cantidad || 0),
+        }];
+    }
+    return [];
+};
 
-                if(item){
-                    item.cantidadEntrega =
-                    Number(item.cantidadEntrega) + Number(l.cantidad);
-        
-                    // Estado del item (opcional, pero útil)
-                    item.estado =
-                    item.cantidadEntrega < item.necesidad
-                        ? 'parcialmente'
-                        : 'comprado';
-        
-                    await item.save();
-        
-                    requisicionesAfectadas.add(r.requisicionId);
-                }
-            }
-        }
-        if(l.productoId){
-            for (const r of l.itemToProjects) {
-                const item = await itemRequisicion.findOne({
-                    where: {
-                        productoId: l.productoId,
-                        requisicionId: r.requisicionId,
-                        medida: l.medida
-                    },
-                });
+const buildItemRequisicionWhere = (linea, asignacion, tipo) => {
+    const where = { requisicionId: asignacion.requisicionId };
 
-                if(item){
-                    item.cantidadEntrega =
-                    Number(item.cantidadEntrega) + Number(r.cantidad);
-            
-                    // Estado del item (opcional, pero útil)
-                    item.estado =
-                    item.cantidadEntrega < item.necesidad
-                        ? 'parcialmente'
-                        : 'comprado';
-
-                    await item.save();
-             
-                    requisicionesAfectadas.add(r.requisicionId);
-                }
-            }
+    if (tipo === 'materia') {
+        where.materiumId = linea.materiumId || linea.materiaId;
+    } else {
+        where.productoId = linea.productoId;
+        if (linea.medida != null && linea.medida !== '') {
+            where.medida = linea.medida;
         }
     }
-  
-    // 2️⃣ Recalculamos estado REAL de la requisición
-    // for (const requisicionId of requisicionesAfectadas) {
-    //   const items = await itemRequisicion.findAll({
-    //     where: { requisicionId },
-    //   });
-  
-    //   let hayAlgoComprado = false;
-    //   let faltaAlgo = false;
-  
-    //   for (const it of items) {
-    //     if (Number(it.cantidadEntrega) > 0) {
-    //       hayAlgoComprado = true;
-    //     }
-    //     if (Number(it.cantidadEntrega) < Number(it.necesidad)) {
-    //       faltaAlgo = true;
-    //     }
-    //   }
-  
-    //   let nuevoEstado = 'pendiente';
-  
-    //   if (!hayAlgoComprado) {
-    //     nuevoEstado = 'pendiente';
-    //   } else if (hayAlgoComprado && faltaAlgo) {
-    //     nuevoEstado = 'comprando';
-    //   } else {
-    //     nuevoEstado = 'comprado';
-    //   }
-  
-    //   await requisicion.update(
-    //     { estado: nuevoEstado },
-    //     { where: { id: requisicionId } }
-    //   );
-    // }
+
+    return where;
+};
+
+const actualizarItemRequisicionEntrega = async (item, cantidadAgregar) => {
+    const cantidadNecesaria = Number(item.cantidad || 0);
+    item.cantidadEntrega = Number(item.cantidadEntrega || 0) + Number(cantidadAgregar || 0);
+    item.estado = item.cantidadEntrega < cantidadNecesaria ? 'parcialmente' : 'comprado';
+    await item.save();
+};
+
+const updateItems = async (cotizacionId) => {
+    const searchCotizacion = await comprasCotizacionItem.findAll({
+        where: { comprasCotizacionId: cotizacionId },
+        include: [{ model: itemToProject }],
+    });
+
+    if (!searchCotizacion || searchCotizacion.length === 0) return;
+
+    const requisicionesAfectadas = new Set();
+
+    // 1️⃣ Actualizamos cantidades entregadas por proyecto
+    for (const linea of searchCotizacion) {
+        const asignaciones = getAsignacionesProyecto(linea);
+        if (!asignaciones.length) continue;
+
+        const esMateria = !!(linea.materiumId || linea.materiaId);
+        const esProducto = !!linea.productoId;
+        if (!esMateria && !esProducto) continue;
+
+        const tipo = esMateria ? 'materia' : 'producto';
+
+        for (const asignacion of asignaciones) {
+            if (!asignacion.requisicionId || asignacion.cantidad <= 0) continue;
+
+            const item = await itemRequisicion.findOne({
+                where: buildItemRequisicionWhere(linea, asignacion, tipo),
+            });
+
+            if (!item) continue;
+
+            await actualizarItemRequisicionEntrega(item, asignacion.cantidad);
+            requisicionesAfectadas.add(asignacion.requisicionId);
+        }
+    }
+
     // 2️⃣ Recalculamos estado de la requisición
     for (const id of requisicionesAfectadas) {
         const items = await itemRequisicion.findAll({ where: { requisicionId: id } });
 
-        // Lógica ultra-segura
         const totalItems = items.length;
-        const itemsCompletados = items.filter(it => Number(it.cantidadEntrega) >= Number(it.necesidad)).length;
-        const algunAvance = items.some(it => Number(it.cantidadEntrega) > 0);
+        const itemsCompletados = items.filter(
+            (it) => Number(it.cantidadEntrega || 0) >= Number(it.cantidad || 0)
+        ).length;
+        const algunAvance = items.some((it) => Number(it.cantidadEntrega || 0) > 0);
 
         let nuevoEstado = 'pendiente';
-        
+
         if (itemsCompletados === totalItems && totalItems > 0) {
-        nuevoEstado = 'comprado';
+            nuevoEstado = 'comprado';
         } else if (algunAvance) {
-        nuevoEstado = 'comprando';
+            nuevoEstado = 'comprando';
         }
 
-        // 🚩 Asegúrate que 'requisicion' sea tu MODELO de Sequelize
         await requisicion.update(
-        { estado: nuevoEstado },
-        { where: { id: id } }
+            { estado: nuevoEstado },
+            { where: { id } }
         );
     }
-  };
+};
   
 
 const giveItemToProjects = async (id) => {
