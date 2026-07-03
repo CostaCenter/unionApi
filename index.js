@@ -111,6 +111,52 @@ server.listen(PORT, async () => {
     } catch (colError) {
       console.log('⚠️  Error al agregar columna name:', colError.message);
     }
+
+    try {
+      await db.query(`
+        DO $$ 
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'requiredKits' AND column_name = 'parentRequerimientoId'
+          ) THEN
+            ALTER TABLE "requiredKits" ADD COLUMN "parentRequerimientoId" INTEGER REFERENCES "requiredKits"(id) ON UPDATE CASCADE ON DELETE CASCADE;
+          END IF;
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'requiredKits' AND column_name = 'esContenedor'
+          ) THEN
+            ALTER TABLE "requiredKits" ADD COLUMN "esContenedor" BOOLEAN NOT NULL DEFAULT false;
+          END IF;
+        END $$;
+      `);
+      console.log('✅ Columnas padre-hijo verificadas/agregadas en requiredKits');
+    } catch (colError) {
+      console.log('⚠️  Error al agregar columnas padre-hijo:', colError.message);
+    }
+
+    try {
+      await db.query(`
+        DO $$ 
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'requiredKits' AND column_name = 'extensionId'
+          ) THEN
+            ALTER TABLE "requiredKits" ADD COLUMN "extensionId" INTEGER REFERENCES "extensions"(id) ON UPDATE CASCADE ON DELETE SET NULL;
+          END IF;
+          IF NOT EXISTS (
+            SELECT 1 FROM information_schema.columns 
+            WHERE table_name = 'requiredKits' AND column_name = 'leidoCompras'
+          ) THEN
+            ALTER TABLE "requiredKits" ADD COLUMN "leidoCompras" BOOLEAN NOT NULL DEFAULT false;
+          END IF;
+        END $$;
+      `);
+      console.log('✅ Columnas extensionId y leidoCompras verificadas en requiredKits');
+    } catch (colError) {
+      console.log('⚠️  Error al agregar columnas fase 2:', colError.message);
+    }
     
     console.log(`Server running on port ${PORT}`);
   } catch (err) {

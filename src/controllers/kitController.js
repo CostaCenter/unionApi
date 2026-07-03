@@ -10,6 +10,12 @@ const sequelize = kit.sequelize; // <-- Aquí obtienes la instancia
 const multer = require('multer');
 const { sendNotification, sendNotificationFromController } = require('./services/notificationServices');
 
+// Destinatarios de nuevas solicitudes pendientes (provisional)
+const NOTIFY_USER_PRODUCTO = 2;
+const NOTIFY_USER_KIT = 3;
+
+const getSolicitudNotifyUserId = (tipo) => (tipo === 'producto' ? NOTIFY_USER_PRODUCTO : NOTIFY_USER_KIT);
+
 
 const cloudinary = require('cloudinary').v2;
 const storage = multer.memoryStorage();
@@ -980,6 +986,10 @@ const addItem = async (req, res) => {
                     }
                 });
 
+                if (searchRequerimiento.parentRequerimientoId) {
+                    await syncParentState(searchRequerimiento.parentRequerimientoId);
+                }
+
                 
                 try {
                     console.log(`🚀 Intentando enviar notificación de que el requerimiento se ha empezado a construir, para requerimiento  al usuario ${userId}`);
@@ -1352,6 +1362,10 @@ const changeStateToKit = async(req, res) => {
                 }
             })
             console.log('Actualizado')
+
+            if (searchReq.parentRequerimientoId) {
+                await syncParentState(searchReq.parentRequerimientoId);
+            }
             
             try {
                 console.log(`🚀 Intentando enviar notificación de que el requerimiento ha sido terminado, para requerimiento  al usuario ${userId}`);
@@ -1457,20 +1471,87 @@ const givePriceToKit = async (req, res) => {
 }
 
 // Obtenemos todos los requerimientos de kits
+const syncParentState = async (parentId) => {
+    if (!parentId) return;
+
+    const hijos = await requiredKit.findAll({
+        where: { parentRequerimientoId: parentId },
+    });
+
+    if (!hijos.length) return;
+
+    const allFinish = hijos.every((h) => h.state === 'finish');
+    const anyCreando = hijos.some((h) => h.state === 'creando');
+    const anyLeido = hijos.some((h) => h.leidoProduccion || h.leidoCompras);
+
+    let newState = 'petition';
+    if (allFinish) newState = 'finish';
+    else if (anyCreando) newState = 'creando';
+
+    const parent = await requiredKit.findByPk(parentId);
+    const isProductoParent = parent?.tipo === 'producto';
+
+    const leidoField = isProductoParent
+        ? { leidoCompras: anyLeido || allFinish }
+        : { leidoProduccion: anyLeido || allFinish };
+
+    await requiredKit.update(
+        {
+            state: newState,
+            ...leidoField,
+        },
+        { where: { id: parentId } }
+    );
+};
+
+const buildRequerimientoListWhere = (vista = 'comercial') => {
+    const base = {
+        state: {
+            [Op.in]: ['petition', 'leido', 'creando', 'finish'],
+        },
+        parentRequerimientoId: null,
+    };
+
+    if (vista === 'produccion') {
+        return {
+            ...base,
+            [Op.or]: [{ tipo: 'kit' }, { tipo: null }],
+        };
+    }
+
+    if (vista === 'compras') {
+        return {
+            ...base,
+            tipo: 'producto',
+        };
+    }
+
+    return base;
+};
+
 const getAllRequerimientos = async(req, res) => {
     try{
-        // Consultamos
-        const getAllReq = await requiredKit.findAll({
-            where: {
-                state: {
-                    [Op.in]: ['petition', 'leido', 'creando', 'finish']
-                }
+        const { vista = 'comercial' } = req.query;
+
+        const includes = [
+            { model: user, attributes: ['id', 'name', 'lastName'] },
+            { model: kit, attributes: ['id', 'name'], required: false },
+            { model: producto, attributes: ['id', 'item'], required: false },
+            {
+                model: requiredKit,
+                as: 'hijos',
+                attributes: ['id', 'nombre', 'state', 'leidoProduccion', 'leidoCompras', 'tipo', 'extensionId', 'createdAt'],
+                required: false,
             },
-            order:[['createdAt', 'DESC']]
+        ];
+
+        const getAllReq = await requiredKit.findAll({
+            where: buildRequerimientoListWhere(vista),
+            include: includes,
+            order: [['createdAt', 'DESC']],
         });
 
         if(!getAllReq) return res.status(404).json({msg: 'No hay resultados'});
-        // Caso contrario, avanzamos
         res.status(200).json(getAllReq);
 
     }catch(err){
@@ -1485,8 +1566,25 @@ const getRequerimiento = async (req, res) => {
         const { reqId } = req.params;
         const getOne = await requiredKit.findByPk(reqId, {
             include: [
-                { model: kit },
+                { model: kit, required: false },
+                { model: producto, required: false },
+                { model: extension, required: false },
                 { model: user },
+                {
+                    model: requiredKit,
+                    as: 'padre',
+                    attributes: ['id', 'nombre', 'esContenedor', 'tipo'],
+                },
+                {
+                    model: requiredKit,
+                    as: 'hijos',
+                    include: [
+                        { model: kit, attributes: ['id', 'name'], required: false },
+                        { model: producto, attributes: ['id', 'item'], required: false },
+                        { model: extension, required: false },
+                        { model: user, attributes: ['id', 'name', 'lastName'] },
+                    ],
+                },
                 {
                     model: adjuntRequired,
                     include: [
@@ -1496,7 +1594,8 @@ const getRequerimiento = async (req, res) => {
                 }
             ],
             order: [
-                [{ model: adjuntRequired }, 'createdAt', 'ASC']
+                [{ model: adjuntRequired }, 'createdAt', 'ASC'],
+                [{ model: requiredKit, as: 'hijos' }, 'createdAt', 'ASC'],
             ]
         });
 
@@ -1512,40 +1611,36 @@ const getRequerimiento = async (req, res) => {
     }
 };
 
-// Enviar requerimiento de nuevo kit
+// Enviar requerimiento de nuevo kit (legacy - solicitud individual)
 const needNewKit = async (req, res) => {
     try{
-        // Recibimos datos por body
         const { nombre, description, tipo, userId } = req.body;
-        // Validamos
         if(!nombre || !description) return res.status(400).json({msg: 'Parámetros no son validos'});
-        // Caso contrario, avanzamos
 
         const solitud = await requiredKit.create({
             nombre, 
             description,
             userId,
-            tipo,
-            state: 'petition'
+            tipo: tipo || 'kit',
+            state: 'petition',
+            esContenedor: false,
         })
 
         if(!solitud) return res.status(502).json({msg: 'No hemos logrado crear esto'});
         try {
             await sendNotification({
-                userId: 1, // Para la prueba te llegará al mismo que lo crea, luego pones el ID del Admin
+                userId: getSolicitudNotifyUserId(solitud.tipo || 'kit'),
                 title: "💥 Nuevo requerimiento pendiente",
                 body: `Se ha creado la solicitud: "${nombre}"`,
                 category: "requerimientos",
                 actionUrl: `/requerimientos/${solitud.id}`,
                 targetId: solitud.id,
-                groupKey: "requerimientos_pendientes_global" // <--- Agrupación inteligente activa
+                groupKey: "requerimientos_pendientes_global"
             });
         } catch (notificationError) {
-            // Evitamos que un fallo en la notificación tumbe la creación del requerimiento principal
             console.error("Error disparando la notificación:", notificationError);
         }
 
-        // Caso contrario, avanzamos
         res.status(201).json(solitud)
     }catch(err){
         console.log(err);
@@ -1553,52 +1648,237 @@ const needNewKit = async (req, res) => {
     }
 }
 
+// Crear requerimiento padre (contenedor)
+const needNewKitParent = async (req, res) => {
+    try {
+        const { nombre, description, userId, tipo = 'kit' } = req.body;
+        if (!nombre || !description || !userId) {
+            return res.status(400).json({ msg: 'Parámetros no son válidos' });
+        }
+        if (!['kit', 'producto'].includes(tipo)) {
+            return res.status(400).json({ msg: 'Tipo de solicitud no válido' });
+        }
+
+        const solicitud = await requiredKit.create({
+            nombre,
+            description,
+            userId,
+            tipo,
+            state: 'petition',
+            esContenedor: true,
+        });
+
+        if (!solicitud) return res.status(502).json({ msg: 'No hemos logrado crear esto' });
+
+        res.status(201).json(solicitud);
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
+    }
+};
+
+// Crear requerimiento hijo bajo un padre
+const addChildRequerimiento = async (req, res) => {
+    try {
+        const { parentRequerimientoId, nombre, description, userId, extensionId } = req.body;
+
+        if (!parentRequerimientoId || !nombre || !description || !userId) {
+            return res.status(400).json({ msg: 'Parámetros no son válidos' });
+        }
+
+        const padre = await requiredKit.findByPk(parentRequerimientoId);
+        if (!padre) return res.status(404).json({ msg: 'No se encontró el requerimiento padre' });
+        if (!padre.esContenedor) {
+            return res.status(400).json({ msg: 'El requerimiento padre no es un contenedor válido' });
+        }
+
+        if (padre.tipo === 'kit' && !extensionId) {
+            return res.status(400).json({ msg: 'La extensión (color) es obligatoria para kits' });
+        }
+
+        const hijo = await requiredKit.create({
+            nombre,
+            description,
+            userId,
+            tipo: padre.tipo,
+            parentRequerimientoId,
+            esContenedor: false,
+            state: 'petition',
+            extensionId: padre.tipo === 'kit' ? extensionId : null,
+        });
+
+        if (!hijo) return res.status(502).json({ msg: 'No hemos logrado crear el requerimiento hijo' });
+
+        try {
+            const esProducto = padre.tipo === 'producto';
+            await sendNotificationFromController({
+                userId: getSolicitudNotifyUserId(padre.tipo),
+                title: "Nuevo requerimiento pendiente",
+                body: esProducto
+                    ? `Nueva solicitud de Producto: "${nombre}"`
+                    : `Nueva solicitud de Kit: "${nombre}"`,
+                category: esProducto ? "Solicitudes de Productos" : "Solicitudes de Kits",
+                actionUrl: esProducto ? `/compras/solicitudes/` : `/produccion/solicitudes/`,
+                targetId: hijo.id,
+                groupKey: null,
+            }, req);
+        } catch (notificationError) {
+            console.error("Error disparando la notificación:", notificationError);
+        }
+
+        res.status(201).json(hijo);
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
+    }
+};
+
 // Leemos el requerimiento
 const readRequerimiento = async(req, res) => {
     try{
-        // Avanzamos, recibimos requerimiento por body
         const { reqId, userId } = req.body;
-        // Validamos
         if(!reqId) return res.status(400).json({msg: 'El parámetro no es validos'});
-        // Caso contrario, avanzamos
 
         const searchReq = await requiredKit.findByPk(reqId);
         if(!searchReq) return res.status(404).json({msg: 'No hay resultados'});
 
-        const updateThat = await requiredKit.update({
-            leidoProduccion: true
-        }, {
-            where: {
-                id: reqId
-            }
+        let isProducto = searchReq.tipo === 'producto';
+        if (!isProducto && searchReq.parentRequerimientoId) {
+            const padre = await requiredKit.findByPk(searchReq.parentRequerimientoId);
+            if (padre?.tipo === 'producto') isProducto = true;
+        }
+
+        if (!isProducto && searchReq.leidoProduccion) {
+            return res.status(200).json({ msg: 'ya leido' });
+        }
+        if (isProducto && searchReq.leidoCompras) {
+            return res.status(200).json({ msg: 'ya leido' });
+        }
+
+        const updateFields = isProducto
+            ? { leidoCompras: true }
+            : { leidoProduccion: true };
+
+        await requiredKit.update(updateFields, {
+            where: { id: reqId },
         });
 
+        if (searchReq.parentRequerimientoId) {
+            await syncParentState(searchReq.parentRequerimientoId);
+        }
+
         try {
-            console.log(`🚀 Intentando enviar notificación de que el requerimiento ha sido leido, para requerimiento  al usuario ${userId}`);
-            
-            const notificationResult = await sendNotificationFromController({
-                userId, // Para la prueba te llegará al mismo que lo crea, luego pones el ID del Admin
+            await sendNotificationFromController({
+                userId,
                 title: "¡Requerimiento leído!",
-                body: `El requerimiento "${searchReq.nombre}" ha sido revisado en producción.`,
-                category: "Solicitudes de Kits",
-                actionUrl: `/comercial/solicitudes/`, 
+                body: isProducto
+                    ? `El requerimiento "${searchReq.nombre}" ha sido revisado en compras.`
+                    : `El requerimiento "${searchReq.nombre}" ha sido revisado en producción.`,
+                category: isProducto ? "Solicitudes de Productos" : "Solicitudes de Kits",
+                actionUrl: `/comercial/solicitudes/`,
                 targetId: reqId,
-                groupKey: null // <--- Temporalmente null para evitar el error de tipo
+                groupKey: null
             }, req);
-            
-            console.log(`✅ Resultado de la notificación:`, notificationResult);
         } catch (notificationError) {
-            // Evitamos que un fallo en la notificación tumbe la creación del requerimiento principal
             console.error("❌ Error disparando la notificación:", notificationError);
         }
 
-        res.status(200).json({msg: 'actualizado'});
+        res.status(200).json({ msg: 'actualizado', leidoCompras: isProducto, leidoProduccion: !isProducto });
 
     }catch(err){
         console.log(err);
-        res.status(200).json({msg: 'Ha ocurrido un error en la principal.'});
+        res.status(500).json({msg: 'Ha ocurrido un error en la principal.'});
     }
 }
+
+// Vincular producto terminado a un requerimiento hijo
+const giveProductoToRequerimiento = async (req, res) => {
+    try {
+        const { reqId, productoId } = req.body;
+        if (!reqId || !productoId) {
+            return res.status(400).json({ msg: 'Parámetros no son válidos' });
+        }
+
+        const reqRecord = await requiredKit.findByPk(reqId);
+        if (!reqRecord) return res.status(404).json({ msg: 'No se encontró el requerimiento' });
+        if (reqRecord.tipo !== 'producto') {
+            return res.status(400).json({ msg: 'Este requerimiento no es de producto terminado' });
+        }
+
+        await requiredKit.update({
+            state: 'creando',
+            productoId,
+        }, {
+            where: { id: reqId },
+        });
+
+        if (reqRecord.parentRequerimientoId) {
+            await syncParentState(reqRecord.parentRequerimientoId);
+        }
+
+        try {
+            await sendNotificationFromController({
+                userId: reqRecord.userId,
+                title: '¡Tu producto está en proceso!',
+                body: `El producto "${reqRecord.nombre}" ya fue registrado. Falta asignar proveedor.`,
+                category: 'Solicitudes de Productos',
+                actionUrl: '/comercial/solicitudes/',
+                targetId: reqId,
+                groupKey: null,
+            }, req);
+        } catch (notificationError) {
+            console.error('Error disparando la notificación:', notificationError);
+        }
+
+        res.status(200).json({ msg: 'Actualizado.' });
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
+    }
+};
+
+// Completar requerimiento de producto terminado (proveedor asignado)
+const finishRequerimientoProducto = async (req, res) => {
+    try {
+        const { reqId } = req.body;
+        if (!reqId) return res.status(400).json({ msg: 'Parámetros no son válidos' });
+
+        const reqRecord = await requiredKit.findByPk(reqId);
+        if (!reqRecord) return res.status(404).json({ msg: 'No se encontró el requerimiento' });
+        if (reqRecord.tipo !== 'producto') {
+            return res.status(400).json({ msg: 'Este requerimiento no es de producto terminado' });
+        }
+        if (!reqRecord.productoId) {
+            return res.status(400).json({ msg: 'Debe registrar el producto antes de completar' });
+        }
+
+        await requiredKit.update({ state: 'finish' }, { where: { id: reqId } });
+
+        if (reqRecord.parentRequerimientoId) {
+            await syncParentState(reqRecord.parentRequerimientoId);
+        }
+
+        try {
+            await sendNotificationFromController({
+                userId: reqRecord.userId,
+                title: '¡Tu producto está listo!',
+                body: `El producto "${reqRecord.nombre}" fue completado con proveedor y precio.`,
+                category: 'Solicitudes de Productos',
+                actionUrl: '/comercial/solicitudes/',
+                targetId: reqId,
+                groupKey: null,
+            }, req);
+        } catch (notificationError) {
+            console.error('Error disparando la notificación:', notificationError);
+        }
+
+        res.status(200).json({ msg: 'Completado con éxito' });
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ msg: 'Ha ocurrido un error en la principal.' });
+    }
+};
+
 // Damos kit a un requerimiento
 const giveKitToRequerimiento = async(req, res) => {
     try{
@@ -1613,9 +1893,13 @@ const giveKitToRequerimiento = async(req, res) => {
                 id: reqId
             }
         });
-        // Validamos respuesta
         if(!sendUpdate) return res.status(502).json({msg: 'No hemos logrado actualizar esto'});
-        // Caso contrario, avanzamos
+
+        const reqRecord = await requiredKit.findByPk(reqId);
+        if (reqRecord?.parentRequerimientoId) {
+            await syncParentState(reqRecord.parentRequerimientoId);
+        }
+
         res.status(200).json({msg: 'Actualizado.'});
     }catch(err){
         console.log(err);
@@ -1719,6 +2003,8 @@ const result = await cloudinary.uploader.upload(
                 notificationUrl = "/comercial/solicitudes/";
             } else if (para === "produccion") {
                 notificationUrl = "/produccion/solicitudes/";
+            } else if (para === "compras") {
+                notificationUrl = "/compras/solicitudes/";
             }
             
             console.log(`📍 URL de notificación configurada: ${notificationUrl} (para: ${para})`);
@@ -1804,10 +2090,10 @@ const needNewKitFromCotizacion = async (req, res) => {
             if(!solitud) return res.status(502).json({msg: 'No hemos logrado crear este requerimiento'});
 
             try {
-                console.log(`🚀 Intentando enviar notificación para requerimiento ${solitud.id} al usuario 1`);
+                console.log(`🚀 Intentando enviar notificación para requerimiento ${solitud.id} al usuario ${NOTIFY_USER_KIT}`);
                 
                 const notificationResult = await sendNotificationFromController({
-                    userId: 1, // Para la prueba te llegará al mismo que lo crea, luego pones el ID del Admin
+                    userId: NOTIFY_USER_KIT,
                     title: "Nuevo requerimiento pendiente",
                     body: `Nueva solicitud de Kit: "${nombre}"`,
                     category: "Solicitudes de Kits",
@@ -2075,12 +2361,16 @@ module.exports = {
 
     // Solciitar kit
     needNewKit, // Necesitan un nuevo kit
+    needNewKitParent, // Crear requerimiento padre (contenedor)
+    addChildRequerimiento, // Agregar requerimiento hijo
     getAllRequerimientos, // Get All
     getRequerimiento, // Obtenemos un requerimiento
     addMessageToRequerimiento, // Agregar mensaje al requerimiento
     cancelRequired, // Cancelar requerimiento
     giveKitToRequerimiento, // Dar kit a un requerimiento - para creando
-    readRequerimiento, // Leer desde producción
+    giveProductoToRequerimiento, // Vincular producto terminado
+    finishRequerimientoProducto, // Completar requerimiento producto
+    readRequerimiento, // Leer desde producción o compras
     getAllKitV2, // Obtener todos los kits V2
     needNewKitFromCotizacion, // Necesitan un kit o producto desde la cotización
 }

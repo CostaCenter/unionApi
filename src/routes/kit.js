@@ -3,8 +3,10 @@ const {
     addKit, addItem, getKit, deleteItemOnKit, getAllKit, changeStateToKit, 
     getAllKitCompleted, clonarKit, deleteKit, updateKitt, getKits, searchKitsQuery, 
     updateItemOnKit, searchKitsForCoti, addSegmento, updateSegmento, getProduccion, 
-    getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit, needNewKit, 
-    addMessageToRequerimiento, giveKitToRequerimiento, getAllRequerimientos, 
+    getKitPorFecha, getKitsFiltrados, deleteSegmento, givePriceToKit, needNewKit,
+    needNewKitParent, addChildRequerimiento,
+    addMessageToRequerimiento, giveKitToRequerimiento, giveProductoToRequerimiento,
+    finishRequerimientoProducto, getAllRequerimientos,
     getRequerimiento, readRequerimiento, clonarKitCotizacion, getKitsFiltradosProduccion, 
     updateItemKitCalibre, getAllKitV2, searchKitsSimulacionForCoti, 
     needNewKitFromCotizacion, copyKitRecipe
@@ -58,8 +60,12 @@ router.route('/segmento/delete/segmento/:segmentoId').delete(deleteSegmento);
 router.route('/requerimientos/get/all').get(getAllRequerimientos);
 router.route('/requerimiento/get/one/:reqId').get(getRequerimiento);
 router.route('/requerimientos/post/add').post(needNewKit);
+router.route('/requerimientos/post/add/parent').post(needNewKitParent);
+router.route('/requerimientos/post/add/child').post(addChildRequerimiento);
 router.route('/requerimiento/put/read').put(readRequerimiento);
 router.route('/requerimiento/put/give/kit').put(giveKitToRequerimiento);
+router.route('/requerimiento/put/give/producto').put(giveProductoToRequerimiento);
+router.route('/requerimiento/put/finish/producto').put(finishRequerimientoProducto);
 router.route('/requerimientos/post/add/message')
     .post(upload.array('images'), addMessageToRequerimiento);
 

@@ -449,6 +449,9 @@ producto.hasMany(requiredKit, {
 });  
 requiredKit.belongsTo(producto);
 
+extension.hasMany(requiredKit, { foreignKey: 'extensionId' });
+requiredKit.belongsTo(extension);
+
 cotizacion.hasMany(requiredKit, {
   onDelete: 'CASCADE',    // Opcional: elimina los posts si se elimina el usuario
 });  
@@ -456,6 +459,16 @@ requiredKit.belongsTo(cotizacion);
 
 user.hasMany(requiredKit);
 requiredKit.belongsTo(user);
+
+requiredKit.hasMany(requiredKit, {
+  as: 'hijos',
+  foreignKey: 'parentRequerimientoId',
+  onDelete: 'CASCADE',
+});
+requiredKit.belongsTo(requiredKit, {
+  as: 'padre',
+  foreignKey: 'parentRequerimientoId',
+});
 
 requiredKit.hasMany(adjuntRequired);
 adjuntRequired.belongsTo(requiredKit); 
