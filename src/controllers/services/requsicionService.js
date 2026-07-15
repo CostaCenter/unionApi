@@ -75,7 +75,8 @@ const getRequisicionDetallada = async (reqId) => {
     searchReq.cotizacion.areaCotizacions.forEach(area => {
         // --- Kits ---
         area.kits.forEach(kitEnCoti => {
-            const cantidadKitEnCoti = kitEnCoti.kitCotizacion?.cantidad || 0;
+            // kitCotizacion.cantidad es DataTypes.STRING en el modelo → convertir a Number
+            const cantidadKitEnCoti = Number(kitEnCoti.kitCotizacion?.cantidad) || 0;
             const kitId = kitEnCoti.id;
 
             if (!totalKits[kitId]) {
