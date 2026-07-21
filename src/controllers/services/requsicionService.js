@@ -383,16 +383,17 @@ const nuevaCompra = async(body) => {
         proveedorId: proveedor
     }) 
     .then(async (result) => {
- 
-        proyectos.map(async (pr) => {
-            const addToProyecto = await ComprasCotizacionProyecto.create({
-                name: result.name,
-                requisicionId: pr,
-                comprasCotizacionId: result.id,
+
+        if (proyectos && proyectos.length) {
+            proyectos.map(async (pr) => {
+                const addToProyecto = await ComprasCotizacionProyecto.create({
+                    name: result.name,
+                    requisicionId: pr,
+                    comprasCotizacionId: result.id,
+                })
             })
-        })
-        
- 
+        }
+
         return result
     });
 

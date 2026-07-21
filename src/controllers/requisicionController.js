@@ -1303,22 +1303,21 @@ const newCotizacionProvider = async (req, res) => {
         // Recibimos datos por body
         const { name, description, proveedor, proyectos } = req.body;
         // Validamos
-        if(!name || !proveedor || !proyectos) return res.status(400).json({msg: 'Parámetros no son validos.'});
+        if(!name || !proveedor) return res.status(400).json({msg: 'Parámetros no son validos.'});
         // Caso contrario, avanzamos
-        // Buscamos primero, que no exista una cotización con ese nombre y ese proyecto
-        const searchCotizacion = await comprasCotizacion.findOne({
-            where: {
-                name,
-                proveedorId: proveedor
-            },
-            include: [{
+        // Verificamos duplicado: si hay proyectos filtramos por ellos, si no solo por nombre+proveedor
+        const includeRequisiciones = proyectos && proyectos.length
+            ? [{
                 model: requisicion,
                 as: 'requisiciones',
-                through: {
-                where: { requisicionId: proyectos }
-                },
+                through: { where: { requisicionId: proyectos } },
                 required: true
             }]
+            : [];
+
+        const searchCotizacion = await comprasCotizacion.findOne({
+            where: { name, proveedorId: proveedor },
+            include: includeRequisiciones
         });
 
         if(searchCotizacion) return res.status(200).json({msg: 'Ya existe una cotización con este nombre'});

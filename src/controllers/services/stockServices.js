@@ -74,8 +74,8 @@ async function getStockByBodega({ ubicacionId, tipo = null, page = 1, limit = 50
 
   const materiasMap = {};
   if (materiaIds.length) {
-    const materias = await materia.findAll({ where: { id: { [Op.in]: materiaIds } }, attributes: ['id', 'description'], raw: true });
-    materias.forEach(m => { materiasMap[m.id] = m.description; });
+    const materias = await materia.findAll({ where: { id: { [Op.in]: materiaIds } }, attributes: ['id', 'item', 'description'], raw: true });
+    materias.forEach(m => { materiasMap[m.id] = m.item || m.description; });
   }
 
   const kitsMap = {};

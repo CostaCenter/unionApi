@@ -380,7 +380,7 @@ const searchMateriaByQuery = async (req, res) => {
  */
 const buscarMateriaPorProveedorQuery = async (req, res) => {
     try {
-        const { proveedorId, q } = req.query;
+        const { proveedorId, q, lineaId } = req.query;
 
         if (!proveedorId) {
             return res.status(400).json({ msg: 'proveedorId es obligatorio' });
@@ -401,6 +401,23 @@ const buscarMateriaPorProveedorQuery = async (req, res) => {
                     { item: { [Op.iLike]: `%${qs}%` } },
                     { description: { [Op.iLike]: `%${qs}%` } }
                 ];
+            }
+        }
+
+        // Filtro opcional por línea (para separar consumibles de MP general)
+        if (lineaId !== undefined && lineaId !== null && String(lineaId).trim() !== '') {
+            const lid = Number(lineaId);
+            if (!Number.isNaN(lid) && lid > 0) {
+                whereMateria.lineaId = lid;
+            }
+        }
+
+        // Filtro opcional por categoría (para consumibles: categoriumId=15)
+        const { categoriumId } = req.query;
+        if (categoriumId !== undefined && categoriumId !== null && String(categoriumId).trim() !== '') {
+            const cid = Number(categoriumId);
+            if (!Number.isNaN(cid) && cid > 0) {
+                whereMateria.categoriumId = cid;
             }
         }
 
