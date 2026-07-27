@@ -1,5 +1,5 @@
 const { ingresarCantidadListaParaRemision, remisionarDocumento, getAllRemisiones, actualizarDatosRemision } = require('./services/remisionServices');
-const { remision, cotizacion, client, itemRemision, necesidadProyecto, requisicion, producto, kit, extension, user  } = require('../db/db');
+const { remision, cotizacion, client, itemRemision, necesidadProyecto, requisicion, producto, kit, extension, user, priceKit } = require('../db/db');
 
 /**
  * POST /api/remision/post/ingresar-listo
@@ -155,7 +155,18 @@ async function getRemisionByIdController(req, res) {
           model: itemRemision,
           include: [
             { model: producto, attributes: ['id', 'item', 'unidad'] },
-            { model: kit, include:[{ model: extension }]  },
+            {
+              model: kit,
+              include: [
+                { model: extension },
+                {
+                  model: priceKit,
+                  where: { state: 'active' },
+                  required: false,
+                  attributes: ['id', 'bruto', 'iva', 'valor', 'state']
+                }
+              ]
+            },
             { model: necesidadProyecto, attributes: ['id', 'cantidadComprometida', 'cantidadEntregada', 'estado'] }
           ]
         }
