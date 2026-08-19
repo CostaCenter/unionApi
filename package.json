@@ -4,7 +4,9 @@
   "description": "Union, software de integración de áreas administrativas y operativas",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node scripts/test-fase1-servicio-libre-oc.js",
+    "test:fase1-servicio-oc": "node scripts/test-fase1-servicio-libre-oc.js",
+    "migrate:servicio-oc": "node scripts/migrate-comprasCotizacionItem-servicio-libre.js",
     "start": "nodemon index.js"
   },
   "author": "Kabo",

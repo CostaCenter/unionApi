@@ -1,17 +1,16 @@
 {
   "development": {
-    "username": "postgres",
-    "password": "123",
-    "database": "u",
-    "host": "localhost",
+    "use_env_variable": "DATABASE_URL",
     "dialect": "postgres"
   },
   "production": {
-    "username": "postgres",
-    "password": "mnfPuhNtcXTFhlurmBdslUBftGBFMZau",
-    "database": "railway",
-    "host": "centerbeam.proxy.rlwy.net",
-    "port": 41058,
-    "dialect": "postgres"
+    "use_env_variable": "DATABASE_URL",
+    "dialect": "postgres",
+    "dialectOptions": {
+      "ssl": {
+        "require": true,
+        "rejectUnauthorized": false
+      }
+    }
   }
 }

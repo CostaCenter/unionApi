@@ -1,4 +1,5 @@
 const { Sequelize, Op} = require('sequelize');
+require('dotenv').config();
 
 // Importe.
 const modelUser = require('./model/user'); // User
@@ -79,26 +80,26 @@ const modelComprarGrupo = require('./model/comprar_grupo');
 // NOTIFICACIONES
 const modelNotification = require('./model/notification');
 
-const entorno = true;     
-let dburl = entorno ? 'postgresql://postgres:mnfPuhNtcXTFhlurmBdslUBftGBFMZau@centerbeam.proxy.rlwy.net:41058/railway' : 'postgres:postgres:123@localhost:5432/u';
- 
+const dburl = process.env.DATABASE_URL;
+
+if (!dburl) {
+    throw new Error(
+        'DATABASE_URL no está definida. Agrégala en .env (ver .env.example). No hardcodear credenciales en el código.'
+    );
+}
+
+const useSsl = process.env.DB_SSL !== 'false';
+
 const sequelize = new Sequelize(dburl, {
     logging: false,
     native: false,
-    // dialect: 'postgres',
-    // dialectOptions: {
-    //   ssl: {
-    //     require: true,
-    //     rejectUnauthorized: false
-    //   }
-    // },
-    // pool: {
-    //   max: 5,
-    //   min: 0,
-    //   acquire: 30000, 
-    //   idle: 10000
-    // }
-}); 
+    dialectOptions: useSsl ? {
+        ssl: {
+            require: true,
+            rejectUnauthorized: false,
+        },
+    } : {},
+});
   
  
     

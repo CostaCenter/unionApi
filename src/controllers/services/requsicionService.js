@@ -403,9 +403,39 @@ const nuevaCompra = async(body) => {
 
 
 
-// Anexar item o itemCompra a una cotización
+const TIPOS_COMPRAS_ITEM = ['material', 'producto', 'servicio_libre'];
+
+const inferTipoComprasItem = (body = {}) => {
+    if (body.tipo && TIPOS_COMPRAS_ITEM.includes(body.tipo)) return body.tipo;
+    if (body.productoId) return 'producto';
+    if (body.materiaId || body.materiumId) return 'material';
+    return null;
+};
+
+const attachProyectosToComprasItem = async (comprasCotizacionItemId, proyectos = []) => {
+    if (!comprasCotizacionItemId || !Array.isArray(proyectos) || !proyectos.length) {
+        return [];
+    }
+
+    const created = await Promise.all(
+        proyectos.map((pr) =>
+            itemToProject.create({
+                cantidad: pr.cantidad,
+                necesidad: pr.necesidad,
+                estado: 'pendiente',
+                requisicionId: pr.requisicionId,
+                comprasCotizacionItemId,
+            })
+        )
+    );
+
+    return created;
+};
+
+// Anexar item o itemCompra a una cotización (material / producto)
 const addItemToCotizacion = async(body) => {
     const { cantidad, precioUnidad, descuento, precio, precioTotal, materiaId, productoId, cotizacionId, requisicion, medida } = body;
+    const tipo = inferTipoComprasItem(body);
 
     const addItem = await comprasCotizacionItem.create({
         cantidad, 
@@ -414,16 +444,52 @@ const addItemToCotizacion = async(body) => {
         precio,
         precioTotal,
         estado: 'pendiente',
-        materiaId,
+        tipo,
+        descripcionLibre: null,
+        materiaId: tipo === 'material' ? materiaId : null,
         requisicionId: requisicion,
-        materiumId: materiaId,
-        productoId,
+        materiumId: tipo === 'material' ? materiaId : null,
+        productoId: tipo === 'producto' ? productoId : null,
         comprasCotizacionId: cotizacionId,
         medida
     })
  
     if(!addItem) return null;
     return addItem
+}
+
+// Anexar servicio de texto libre a una orden de compra
+const addServicioLibreToCotizacion = async(body) => {
+    const {
+        descripcionLibre,
+        cantidad,
+        precioUnidad,
+        descuento,
+        precio,
+        precioTotal,
+        cotizacionId,
+        requisicion,
+    } = body;
+
+    const addItem = await comprasCotizacionItem.create({
+        cantidad,
+        precioUnidad,
+        descuento: descuento ?? '0',
+        precio,
+        precioTotal,
+        estado: 'pendiente',
+        tipo: 'servicio_libre',
+        descripcionLibre: String(descripcionLibre).trim(),
+        materiaId: null,
+        materiumId: null,
+        productoId: null,
+        requisicionId: requisicion ?? null,
+        comprasCotizacionId: cotizacionId,
+        medida: null,
+    });
+
+    if (!addItem) return null;
+    return addItem;
 }
  
 /** Asignaciones por proyecto: itemToProject o requisicionId directo en la línea de compra */
@@ -546,6 +612,9 @@ module.exports = {
     createRequisicion,
     nuevaCompra, // Nueva compra
     addItemToCotizacion, // añadir item a Cotización,
+    addServicioLibreToCotizacion, // servicio texto libre en OC
+    attachProyectosToComprasItem, // repartición itemToProject
+    inferTipoComprasItem,
     updateItems, // Actualizar items y requisicion
     giveNecesidadToProject, // Dar necesidad de kit o producto a proyecto 
     addMateriaRequisicion, // Agregar materia a requisición

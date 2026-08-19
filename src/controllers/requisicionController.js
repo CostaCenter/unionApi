@@ -4,7 +4,7 @@ const { materia, producto, productPrice, productoCotizacion, cotizacion, service
 const { searchPrice, addPriceMt, updatePriceState,  } = require('./services/priceServices');
 const { searchKit, createKitServices, addItemToKit, deleteDeleteItemOnKit, changeState } = require('./services/kitServices');
 const { default: axios } = require('axios');
-const { nuevaCompra, addItemToCotizacion, updateItems, giveNecesidadToProject, getRequisicionDetallada, addProductoRequisicion, addMateriaRequisicion, getNecesidadProjecto } = require('./services/requsicionService');
+const { nuevaCompra, addItemToCotizacion, addServicioLibreToCotizacion, attachProyectosToComprasItem, inferTipoComprasItem, updateItems, giveNecesidadToProject, getRequisicionDetallada, addProductoRequisicion, addMateriaRequisicion, getNecesidadProjecto } = require('./services/requsicionService');
 const dayjs = require('dayjs');
 const { render } = require('ejs');
 const { createCompromiso } = require('./services/inventarioServices');
@@ -1802,6 +1802,7 @@ const getAllOrdenesComprasFiltro = async (req, res) => {
                     attributes: ['id', 'nombre'],
                 },
             ],
+            order: [['createdAt', 'DESC'], ['id', 'DESC']],
         });
 
         if (!searchAll || !searchAll.length) {
@@ -2058,51 +2059,139 @@ const changeItemOnRequisicionAndNecesidad  = async (req, res) => {
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
     }
 }
-// Orden de compra
+// Orden de compra — material / producto
 const addItemToOrdenDeCompraProvider = async (req, res) => {
     try{
-        // Recibimos datos por body
-        const { cantidad, precioUnidad, descuento, precio, precioTotal, materiaId, productoId, cotizacionId, proyectos, medida } = req.body;
-        // Validamos
-        if(!cantidad || !precioUnidad || !precioTotal || !cotizacionId) return res.status(400).json({msg: 'Los parámetros no son validos.'});
-        // Caso contrario, avanzamos
-        
-        // Buscamos primero, que no exista una cotización con ese nombre y ese proyecto
-        const searchItemCotizacion = await comprasCotizacionItem.findOne({
-            where: {
-                materiaId,
-                productoId,
-                comprasCotizacionId: cotizacionId
-            },
-        });
+        const { cantidad, precioUnidad, descuento, precio, precioTotal, materiaId, productoId, cotizacionId, proyectos, medida, tipo } = req.body;
 
-
-        // Caso contrario, avanzamos...
-        const addItemCotizacion = await addItemToCotizacion(req.body);
- 
-        // Ingresamos la repartición
-        if(proyectos && proyectos.length){
-            proyectos.map(async(pr) => {
- 
-                const add = await itemToProject.create({
-                    cantidad: pr.cantidad,
-                    necesidad: pr.necesidad,
-                    estado: 'pendiente',
-                    requisicionId: pr.requisicionId,
-                    comprasCotizacionItemId: addItemCotizacion.id
-                })
-                return add;
-            })
+        if(!cantidad || !precioUnidad || !precioTotal || !cotizacionId) {
+            return res.status(400).json({msg: 'Los parámetros no son validos.'});
         }
 
+        const tipoItem = inferTipoComprasItem({ tipo, materiaId, productoId });
+        if (tipoItem === 'servicio_libre') {
+            return res.status(400).json({
+                msg: 'Use el endpoint de servicio libre para ítems servicio_libre.',
+            });
+        }
+
+        if (tipoItem !== 'servicio_libre' && (materiaId || productoId)) {
+            const duplicateWhere = {
+                comprasCotizacionId: cotizacionId,
+                [Op.or]: [
+                    { tipo: { [Op.ne]: 'servicio_libre' } },
+                    { tipo: null },
+                ],
+            };
+
+            if (productoId) {
+                duplicateWhere.productoId = productoId;
+            } else {
+                duplicateWhere[Op.and] = [
+                    {
+                        [Op.or]: [
+                            { materiaId },
+                            { materiumId: materiaId },
+                        ],
+                    },
+                ];
+            }
+
+            if (medida != null && medida !== '') {
+                duplicateWhere.medida = medida;
+            }
+
+            const searchItemCotizacion = await comprasCotizacionItem.findOne({
+                where: duplicateWhere,
+            });
+
+            if (searchItemCotizacion) {
+                return res.status(200).json({ msg: 'Ya existe una cotización con este item', item: searchItemCotizacion });
+            }
+        }
+
+        const addItemCotizacion = await addItemToCotizacion({
+            ...req.body,
+            tipo: tipoItem,
+        });
 
         if(!addItemCotizacion) return res.status(501).json({msg: 'No hemos logrado crear esto.'});
-        // Caso contrario, avanzamos...
+
+        if (proyectos && proyectos.length) {
+            await attachProyectosToComprasItem(addItemCotizacion.id, proyectos);
+        }
+
         res.status(201).json(addItemCotizacion);
 
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
+    }
+}
+
+// Orden de compra — servicio de texto libre
+const addServicioLibreToOrdenDeCompraProvider = async (req, res) => {
+    try {
+        const {
+            descripcionLibre,
+            cantidad,
+            precio,
+            descuento,
+            precioUnidad,
+            precioTotal,
+            cotizacionId,
+            proyectos,
+        } = req.body;
+
+        if (!descripcionLibre || !String(descripcionLibre).trim()) {
+            return res.status(400).json({ msg: 'descripcionLibre es requerida.' });
+        }
+        if (!cantidad || !cotizacionId) {
+            return res.status(400).json({ msg: 'cantidad y cotizacionId son requeridos.' });
+        }
+
+        const precioBase = precio ?? precioTotal;
+        if (precioBase == null || precioBase === '') {
+            return res.status(400).json({ msg: 'precio o precioTotal es requerido.' });
+        }
+
+        const orden = await comprasCotizacion.findByPk(cotizacionId);
+        if (!orden) {
+            return res.status(404).json({ msg: 'Orden de compra no encontrada.' });
+        }
+
+        const cantidadNum = Number(cantidad);
+        const precioNum = Number(precioBase);
+        const descuentoNum = descuento != null && descuento !== '' ? Number(descuento) : 0;
+        const precioUnidadCalc = precioUnidad != null && precioUnidad !== ''
+            ? precioUnidad
+            : (cantidadNum > 0 ? String(precioNum / cantidadNum) : String(precioNum));
+        const precioTotalCalc = precioTotal != null && precioTotal !== ''
+            ? precioTotal
+            : String(Math.max(0, precioNum - descuentoNum));
+
+        const addItemCotizacion = await addServicioLibreToCotizacion({
+            descripcionLibre: String(descripcionLibre).trim(),
+            cantidad,
+            precioUnidad: precioUnidadCalc,
+            descuento: String(descuentoNum),
+            precio: String(precioNum),
+            precioTotal: precioTotalCalc,
+            cotizacionId,
+        });
+
+        if (!addItemCotizacion) {
+            return res.status(501).json({ msg: 'No hemos logrado crear el servicio.' });
+        }
+
+        if (proyectos && proyectos.length) {
+            await attachProyectosToComprasItem(addItemCotizacion.id, proyectos);
+        }
+
+        res.status(201).json(addItemCotizacion);
+    } catch (err) {
+        console.log(err);
+        res.status(500).json({ msg: 'Ha ocurrido un error al crear el servicio libre.' });
     }
 }
 
@@ -2379,25 +2468,23 @@ const addItemsToCotizacion = async (req, res) => {
 
 const deleteItemOnCotizacion = async(req, res) => {
     try{
-        // Recibimos por params
         const { comprasCotizacionItemId } = req.params;
         if(!comprasCotizacionItemId) return res.status(400).json({msg: 'Parámetro no es valido.'});
-        // Caso contrario, avanzamos
-        console.log('acá llega')
+
+        const pk = Number(comprasCotizacionItemId);
+        const existing = await comprasCotizacionItem.findByPk(pk);
+        if (!existing) return res.status(404).json({ msg: 'Item no encontrado.' });
+
+        await itemToProject.destroy({
+            where: { comprasCotizacionItemId: pk },
+        });
+
         const remove = await comprasCotizacionItem.destroy({
-            where: {
-                id: comprasCotizacionItemId
-            }
-        })
-        .then((res) => {
-            console.log(res);
-            return true
-        })
-        .catch(err => null)
+            where: { id: pk },
+        });
 
         if(!remove) return res.status(502).json({msg: 'No hemos logrado eliminar esto.'});
-        // Caso contrario, avanzamos
-        res.status(200).json({msg: 'Eliminado'});
+        res.status(200).json({msg: 'Eliminado', comprasCotizacionItemId: pk});
         
     }catch(err){
         console.log(err);
@@ -2730,38 +2817,73 @@ const getDataProject = async (req, res) => {
 
 
 
+const resolveComprasCotizacionItemPk = async ({ comprasCotizacionItemId, id, itemId, tipo, comprasId }) => {
+    const directPk = comprasCotizacionItemId ?? id;
+    if (directPk) return Number(directPk);
+
+    // Compatibilidad con clientes legacy (envían materiaId/productoId como itemId)
+    if (!itemId || !comprasId || !tipo) return null;
+
+    const where = {
+        comprasCotizacionId: comprasId,
+        [Op.or]: [
+            { tipo: { [Op.ne]: 'servicio_libre' } },
+            { tipo: null },
+        ],
+    };
+
+    if (tipo === 'producto') {
+        where.productoId = itemId;
+    } else {
+        where[Op.and] = [
+            {
+                [Op.or]: [
+                    { materiumId: itemId },
+                    { materiaId: itemId },
+                ],
+            },
+        ];
+    }
+
+    const found = await comprasCotizacionItem.findOne({ where });
+    return found ? found.id : null;
+};
+
 // modificar orden de compra items
 const removeItemComprasCotizacion = async(req, res) => {
     try{
-        // Recibimos datos por body
-        const { itemId, tipo, comprasId } = req.body;
+        const { comprasCotizacionItemId, id, itemId, tipo, comprasId } = req.body;
 
-        if(!itemId || !tipo || !comprasId) return res.status(400).json({msg: 'Parámetros no son validos.'});
-        // Caso contrario, avanzamos
+        const pk = await resolveComprasCotizacionItemPk({
+            comprasCotizacionItemId,
+            id,
+            itemId,
+            tipo,
+            comprasId,
+        });
 
-        if(tipo == 'producto'){
-            const removeItem = comprasCotizacionItem.destroy({
-                where: {
-                    comprasCotizacionId: comprasId,
-                    productoId: itemId
-                }
-            })
-
-            if(!removeItem) return res.status(400).json({msg: 'No hemos logrado eliminar esto'});
-            return res.status(200).json({msg: 'Eliminado con exito'});
-        }else{
-            const removeItem = comprasCotizacionItem.destroy({
-                where: {
-                    comprasCotizacionId: comprasId,
-                    materiumId: itemId
-                }
-            })
-
-            if(!removeItem) return res.status(400).json({msg: 'No hemos logrado eliminar esto'});
-            return res.status(200).json({msg: 'Eliminado con exito'});
+        if (!pk) {
+            return res.status(400).json({ msg: 'Parámetros no son validos. Se requiere comprasCotizacionItemId (PK).' });
         }
-        
 
+        const existing = await comprasCotizacionItem.findByPk(pk);
+        if (!existing) {
+            return res.status(404).json({ msg: 'Item no encontrado.' });
+        }
+
+        await itemToProject.destroy({
+            where: { comprasCotizacionItemId: pk },
+        });
+
+        const removed = await comprasCotizacionItem.destroy({
+            where: { id: pk },
+        });
+
+        if (!removed) {
+            return res.status(400).json({ msg: 'No hemos logrado eliminar esto' });
+        }
+
+        return res.status(200).json({ msg: 'Eliminado con exito', comprasCotizacionItemId: pk });
     }catch(err){
         console.log(err);
         res.status(500).json({msg: 'Ha ocurrido un error en la principal'});
@@ -2871,6 +2993,7 @@ module.exports = {
 
     // Anexar item 
     addItemToOrdenDeCompraProvider, // Agregar item y repartición a orden de compra.
+    addServicioLibreToOrdenDeCompraProvider, // Agregar servicio libre a orden de compra.
 
     // FILTRO
     buscarPorQueryMateria, // Buscamos materia prima por query

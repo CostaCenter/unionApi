@@ -29,6 +29,17 @@ module.exports = sequelize => {
         entregado: {
             type: DataTypes.BOOLEAN,
             defaultValue: false
-        }
+        },
+        tipo: {
+            type: DataTypes.STRING(32),
+            allowNull: true,
+            validate: {
+                isIn: [['material', 'producto', 'servicio_libre']],
+            },
+        },
+        descripcionLibre: {
+            type: DataTypes.TEXT,
+            allowNull: true,
+        },
     })  
 }     

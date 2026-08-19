@@ -157,6 +157,14 @@ server.listen(PORT, async () => {
     } catch (colError) {
       console.log('⚠️  Error al agregar columnas fase 2:', colError.message);
     }
+
+    try {
+      const migrationServicioLibre = require('./migrations/20260819000000-compras-cotizacion-item-servicio-libre');
+      await migrationServicioLibre.up(db.getQueryInterface(), db);
+      console.log('✅ Migración servicio_libre OC verificada/aplicada en comprasCotizacionItems');
+    } catch (colError) {
+      console.log('⚠️  Error en migración servicio_libre OC:', colError.message);
+    }
     
     console.log(`Server running on port ${PORT}`);
   } catch (err) {
