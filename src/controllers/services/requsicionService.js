@@ -451,7 +451,7 @@ const addItemToCotizacion = async(body) => {
         materiumId: tipo === 'material' ? materiaId : null,
         productoId: tipo === 'producto' ? productoId : null,
         comprasCotizacionId: cotizacionId,
-        medida
+        medida: medida != null && medida !== '' ? String(medida) : medida
     })
  
     if(!addItem) return null;

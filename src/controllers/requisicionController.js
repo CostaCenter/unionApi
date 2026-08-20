@@ -2098,7 +2098,8 @@ const addItemToOrdenDeCompraProvider = async (req, res) => {
             }
 
             if (medida != null && medida !== '') {
-                duplicateWhere.medida = medida;
+                // medida es VARCHAR en BD; comparar número rompe PostgreSQL (varchar = integer)
+                duplicateWhere.medida = String(medida);
             }
 
             const searchItemCotizacion = await comprasCotizacionItem.findOne({
