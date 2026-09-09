@@ -1,5 +1,5 @@
 const express = require('express');
-const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion, updateCotizacion, addService, deleteServiceOnCotizacion, giveDescuentoService, getAllCondiciones, newCondiction, addPlanToCondicion, giveCondiciones, getAllCotizacionPorAprobar, acceptCotizacionToRequisicion, generarPdf, comeBackCotizacionToComercial, FinishCotizacion, getAllCotizacionForProduccion, ListoCotizacionState, generatePDF, comeBackFromBuying, giveNewValor, givePricioProducto } = require('../controllers/cotizacion');
+const { newCotizacion, addItemToCotizacion, deleteKitOnCotizacion, updateItemToCotizacion, getCotizacion, getAllCotizaciones, searchClientQuery, acceptCotizacion, addSuperKit, deleteSuperKitOnCotizacion, giveDescuento, giveDescuentoSuperKitItem, addAreaToCotizacion, editAreaToCotizacion, deleteAreaToCotizacion, addProducto, clonarArea, addRegisterToCotizacion, deleteProductOnCotizacion, deleteCotizacion, giveDescuentoProducto, newVersionAboutCotizacion, beOfficialVersion, updateCotizacion, addService, deleteServiceOnCotizacion, giveDescuentoService, getAllCondiciones, newCondiction, addPlanToCondicion, giveCondiciones, getAllCotizacionPorAprobar, acceptCotizacionToRequisicion, generarPdf, comeBackCotizacionToComercial, FinishCotizacion, getAllCotizacionForProduccion, ListoCotizacionState, generatePDF, generateOrdenCompraPDF, comeBackFromBuying, giveNewValor, givePricioProducto } = require('../controllers/cotizacion');
 const multer = require('multer');
 
  
@@ -35,6 +35,9 @@ router.route('/admin/update/cotizacion/producto')
     
 router.route('/generatePdf')
     .post(generatePDF)
+
+router.route('/generateOrdenCompraPdf')
+    .post(generateOrdenCompraPDF)
 
 // DEVOLVER COTIZACION A DESARROLLO
 router.route('/admin/put/comeback/desarrollo/:cotiId')

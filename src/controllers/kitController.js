@@ -1531,7 +1531,7 @@ const buildRequerimientoListWhere = (vista = 'comercial') => {
 
 const getAllRequerimientos = async(req, res) => {
     try{
-        const { vista = 'comercial' } = req.query;
+        const { vista = 'comercial', userId } = req.query;
 
         const includes = [
             { model: user, attributes: ['id', 'name', 'lastName'] },
@@ -1545,8 +1545,15 @@ const getAllRequerimientos = async(req, res) => {
             },
         ];
 
+        const where = buildRequerimientoListWhere(vista);
+
+        // En vista comercial, si llega userId (asesor), solo sus solicitudes
+        if (vista === 'comercial' && userId) {
+            where.userId = Number(userId);
+        }
+
         const getAllReq = await requiredKit.findAll({
-            where: buildRequerimientoListWhere(vista),
+            where,
             include: includes,
             order: [['createdAt', 'DESC']],
         });

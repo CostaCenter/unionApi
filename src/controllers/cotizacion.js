@@ -105,6 +105,61 @@ const generatePDF = async (req, res) => {
     res.status(500).send('Error generando PDF');
   }
 };
+
+// PDF Orden de compra (mismo pipeline que cotización: EJS + Puppeteer)
+const generateOrdenCompraPDF = async (req, res) => {
+  try {
+    const htmlPath = path.join(__dirname, './tm/ordenCompra.ejs');
+    const rawCss = fs.readFileSync(path.join(__dirname, './tm/cotizacion.css'), 'utf8');
+    const css = `<style>${rawCss}</style>`;
+    const { data } = req.body;
+
+    if (!data) {
+      return res.status(400).send('No se proporcionaron datos para la orden de compra.');
+    }
+
+    const html = await ejs.renderFile(htmlPath, { data, css }, { async: true });
+
+    const browser = await puppeteer.launch({
+      headless: true,
+      args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: 'networkidle0' });
+
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '60px',
+        bottom: '60px',
+        left: '40px',
+        right: '40px',
+      },
+    });
+
+    await browser.close();
+
+    if (!pdfBuffer || pdfBuffer.length < 1000) {
+      console.error('PDF orden de compra inválido o demasiado pequeño.');
+      return res.status(500).send('PDF inválido');
+    }
+
+    const fileName = `orden-compra-${(data?.cotizacion?.numero || 'documento').replace(/[^\w.-]+/g, '_')}.pdf`;
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="${fileName}"`,
+    });
+
+    res.status(200).end(pdfBuffer);
+  } catch (err) {
+    console.error('PDF Orden Compra Error:', err);
+    res.status(500).send('Error generando PDF de orden de compra');
+  }
+};
+
 // ADMINISTRACIÓN
 const getAllCotizacionPorAprobar = async(req, res) => {
     try{
@@ -1924,6 +1979,7 @@ module.exports = {
 
 
     generatePDF, // GENERAR PDF
+    generateOrdenCompraPDF, // PDF orden de compra desde cotización
     comeBackFromBuying, // DEVOLVER COTIZACION DE BUILDING
 
     giveNewValor, // Dar nuevo valor al precio

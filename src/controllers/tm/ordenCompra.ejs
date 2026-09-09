@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <%- css %>
+</head>
+<body>
+  <div class="logo">
+    <img class="img" src="https://metalicascosta.com.co/assets/img/logo_metalicas_costa.png" alt="">
+  </div>
+
+  <div style="text-align:center; margin: 18px 0 10px;">
+    <h1 style="font-size:18px; font-weight:700; margin:0; letter-spacing:0.5px;">ORDEN DE COMPRA</h1>
+  </div>
+
+  <div class="header">
+    <div class="containerHeader">
+      <div class="box Short">
+        <div class="item">
+          <div class="title"><h3>NOMBRE / RAZÓN SOCIAL</h3></div>
+          <div class="data"><h4><%= data.cliente.nombre %></h4></div>
+        </div>
+        <div class="item">
+          <div class="title"><h3>IDENTIFICACIÓN / NIT</h3></div>
+          <div class="data"><h4><%= data.cliente.nit %></h4></div>
+        </div>
+        <div class="item">
+          <div class="title"><h3>DIRECCIÓN</h3></div>
+          <div class="data"><h4><%= data.cliente.direccion %></h4></div>
+        </div>
+        <div class="item">
+          <div class="title"><h3>CORREO</h3></div>
+          <div class="data"><h4><%= data.cliente.email %></h4></div>
+        </div>
+      </div>
+
+      <div class="box Longer">
+        <div class="item">
+          <div class="title"><h3>NÚMERO DE ORDEN DE COMPRA</h3></div>
+          <div class="data"><h4><%= data.cotizacion.numero %></h4></div>
+        </div>
+        <div class="item">
+          <div class="title"><h3>TELÉFONO</h3></div>
+          <div class="data"><h4><%= data.cliente.telefono %></h4></div>
+        </div>
+        <div class="item">
+          <div class="title"><h3>FECHA</h3></div>
+          <div class="data"><h4><%= data.cotizacion.fecha %></h4></div>
+        </div>
+        <div class="item">
+          <div class="title"><h3>CIUDAD</h3></div>
+          <div class="data"><h4><%= data.cliente.ciudad %></h4></div>
+        </div>
+        <div class="item">
+          <div class="title"><h3>FECHA DE ENTREGA</h3></div>
+          <div class="data"><h4><%= data.cotizacion.fechaEntrega %></h4></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="containerCotizacion">
+    <% (data.areas || []).forEach(area => { %>
+    <div class="area-section">
+      <div class="area-title"><%= area.nombre %></div>
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="text-align: left;">REFERENCIA</th>
+            <th style="text-align: left;">DESCRIPCIÓN</th>
+            <th style="text-align: right;">CANTIDAD</th>
+            <th style="text-align: right;">VALOR UNITARIO</th>
+            <th class="corta Right" style="text-align: right;">SUBTOTAL</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% (area.productos || []).forEach(producto => { %>
+            <tr>
+              <td class="mini"><%= producto.referencia %></td>
+              <td class="large"><%= producto.descripcion %></td>
+              <td class="mini" style="text-align: right;"><%= producto.cantidad %></td>
+              <td class="corta" style="text-align: right;"><%= new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(producto.valorUnitario) %></td>
+              <td class="corta Right"><%= new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(producto.subtotal) %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+        <thead style="margin-top: 30px;">
+          <tr>
+            <th></th>
+            <th></th>
+            <th></th>
+            <th></th>
+            <th style="text-align: right;">VALOR ÁREA</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mini"></td>
+            <td class="large"></td>
+            <td class="corta"></td>
+            <td class="corta"></td>
+            <td class="middle Right"><%= new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(area.totalArea) %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <% }) %>
+
+    <div class="total">
+      <table class="table">
+        <thead>
+          <tr>
+            <th style="text-align: right;">SUBTOTAL INICIAL</th>
+            <th style="text-align: right;">DESCUENTO</th>
+            <th style="text-align: right;">SUBTOTAL CON DESCUENTO</th>
+            <th style="text-align: right;">VALOR IVA</th>
+            <th style="text-align: right;">TOTAL</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="mini" style="text-align: right;"><%= new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(data.totales.subtotal) %></td>
+            <td class="large" style="text-align: right;"><%= new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(data.totales.descuentos) %></td>
+            <td class="corta" style="text-align: right;"><%= new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(data.totales.subtotalConDescuento) %></td>
+            <td class="corta" style="text-align: right;"><%= new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(data.totales.iva) %></td>
+            <td class="middle" style="text-align: right;"><%= new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(data.totales.total) %></td>
+          </tr>
+        </tbody>
+      </table>
+      <br><br>
+
+      <div class="notas">
+        <strong style="font-size: 12px;">Notas adicionales</strong>
+        <br><br>
+        <span style="color: #666; font-size: 12px; white-space: pre-wrap;"><%= data.nota || 'Sin notas adicionales' %></span>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
