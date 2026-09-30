@@ -62,6 +62,14 @@ const generatePDF = async (req, res) => {
     const rawCss = fs.readFileSync(path.join(__dirname, './tm/cotizacion.css'), 'utf8');
     const css = `<style>${rawCss}</style>`;
     const { data } = req.body;
+
+    if (!data?.areas?.length || !data?.totales) {
+      return res.status(400).send('Datos incompletos para generar el PDF (áreas o totales).');
+    }
+    if (!Array.isArray(data.notas)) {
+      data.notas = [];
+    }
+
     // Inyecta el CSS embebido dentro del <head> del HTML
     const html = await ejs.renderFile(htmlPath, {data, css}, { async: true });    // 2. Lanzar navegador
     const browser = await puppeteer.launch({
