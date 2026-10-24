@@ -2568,23 +2568,66 @@ async function liberarCompromiso(materiaId, ubicacionId, cantidad) {
   return inv; 
 }
 
-async function createCompromiso(materiaId, cantidadComprometida, cotizacionId, productoId, medida){
-  let numero = cantidadComprometida;
-  console.log(numero)
-  // Procedemos a crear el compromiso
-  let createCompromiso = await cotizacion_compromiso.create({
+function estadoCompromisoDesdeCantidades(cantidadEntregada, cantidadComprometida) {
+  const entregada = Number(cantidadEntregada);
+  const comprometida = Number(cantidadComprometida);
+  if (entregada >= comprometida) return 'completo';
+  if (entregada <= 0) return 'reservado';
+  return 'parcial';
+}
+
+function whereCompromisoUnico(cotizacionId, materiaId, productoId, medida) {
+  const where = { cotizacionId };
+  if (productoId) {
+    where.productoId = productoId;
+    where.materiaId = { [Op.is]: null };
+    where.materiumId = { [Op.is]: null };
+  } else {
+    where.productoId = { [Op.is]: null };
+    where.materiaId = materiaId;
+    where.materiumId = materiaId;
+  }
+  if (medida == null || medida === '') {
+    where.medida = { [Op.is]: null };
+  } else {
+    where.medida = medida;
+  }
+  return where;
+}
+
+async function createCompromiso(materiaId, cantidadComprometida, cotizacionId, productoId, medida, t){
+  const numero = cantidadComprometida;
+  const tx = t ? { transaction: t } : {};
+  const medidaGuardar = medida == null || medida === '' ? null : medida;
+
+  const existente = await cotizacion_compromiso.findOne({
+    where: whereCompromisoUnico(cotizacionId, materiaId, productoId, medidaGuardar),
+    ...tx,
+  });
+
+  if (existente) {
+    existente.cantidadComprometida = numero;
+    existente.estado = estadoCompromisoDesdeCantidades(
+      existente.cantidadEntregada,
+      numero
+    );
+    await existente.save(tx);
+    return existente;
+  }
+
+  const nuevo = await cotizacion_compromiso.create({
     cantidadComprometida: numero,
-    cantidadEntrega: 0,
+    cantidadEntregada: 0,
     estado: 'reservado',
     materiaId: !productoId ? materiaId : null,
     materiumId: !productoId ? materiaId : null,
-    productoId: productoId,
-    medida: medida,
+    productoId: productoId || null,
+    medida: medidaGuardar,
     cotizacionId,
-    ubicacionId: 3
-  })  
+    ubicacionId: 3,
+  }, tx);
 
-  return createCompromiso;
+  return nuevo;
 }
 
 

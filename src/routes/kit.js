@@ -9,7 +9,7 @@ const {
     finishRequerimientoProducto, getAllRequerimientos,
     getRequerimiento, readRequerimiento, clonarKitCotizacion, getKitsFiltradosProduccion, 
     updateItemKitCalibre, getAllKitV2, searchKitsSimulacionForCoti, 
-    needNewKitFromCotizacion, copyKitRecipe
+    needNewKitFromCotizacion, copyKitRecipe, searchKitsForCopyRecipe
 } = require('../controllers/kitController');
 const multer = require('multer');
 
@@ -18,6 +18,7 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
 // ==================== GET - Obtener Kits ====================
+router.route('/get/search/copy-recipe').get(searchKitsForCopyRecipe);
 router.route('/get/:kitId').get(getKit);
 router.route('/getAll').get(getAllKit);
 router.route('/getAll/general').get(getKits);

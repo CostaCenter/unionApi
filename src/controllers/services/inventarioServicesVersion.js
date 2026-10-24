@@ -68,6 +68,7 @@ async function trasladarPiezasCompletasVersion({
   ubicacionDestinoId,
   refDoc,
   comprasCotizacionId, // OBLIGATORIO
+  comprasCotizacionItemId = null,
   cotizacionId = null,
   usuarioId = null,
   ordenarPor = 'DESC'
@@ -116,12 +117,17 @@ async function trasladarPiezasCompletasVersion({
       ubicacionOrigenId
     });
 
+    const whereFisico = {
+      [campoFiltro]: idFiltro,
+      ubicacionId: ubicacionOrigenId,
+      cantidadDisponible: { [Op.gt]: 0 }
+    };
+    if (comprasCotizacionId) {
+      whereFisico.comprasCotizacionId = comprasCotizacionId;
+    }
+
     const itemsDisponibles = await inventarioItemFisico.findAll({
-      where: {
-        [campoFiltro]: idFiltro,
-        ubicacionId: ubicacionOrigenId,
-        cantidadDisponible: { [Op.gt]: 0 }
-      },
+      where: whereFisico,
       order: [['cantidadDisponible', ordenarPor]],
       transaction: t,
       lock: t.LOCK.UPDATE
@@ -412,11 +418,15 @@ async function trasladarPiezasCompletasVersion({
 
     // 🔄 ACTUALIZAR COMPROMISOS POR PROYECTO (cantidadEntregada)
     // Obtener el item de la orden de compra con sus reparticiones a proyectos
+    const whereLineaOc = comprasCotizacionItemId
+      ? { id: comprasCotizacionItemId }
+      : {
+          comprasCotizacionId,
+          [campoFiltro]: idFiltro
+        };
+
     const itemCotizacion = await comprasCotizacionItem.findOne({
-      where: {
-        comprasCotizacionId: comprasCotizacionId,
-        [campoFiltro]: idFiltro
-      },
+      where: whereLineaOc,
       include: [{
         model: itemToProject,
         include: [{
@@ -509,6 +519,14 @@ async function trasladarPiezasCompletasVersion({
       }
     } else {
       console.log(`[TRANSFERENCIA] No se encontraron reparticiones a proyectos para este item. Compromisos no se actualizarán.`);
+    }
+
+    const lineaOcId = comprasCotizacionItemId || itemCotizacion?.id;
+    if (lineaOcId) {
+      await comprasCotizacionItem.update(
+        { entregado: true, estado: 'Produccion' },
+        { where: { id: lineaOcId }, transaction: t }
+      );
     }
 
     return {

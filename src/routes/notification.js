@@ -2,6 +2,7 @@ const express = require('express');
 const {
     getNotifications,
     markAllAsSeen,
+    clearAllNotifications,
     markAsRead,
     createNotification,
     createNotificationDirect
@@ -18,6 +19,10 @@ router.route('/')
 // PUT /api/notifications/mark-as-seen - Marcar todas las notificaciones del usuario como vistas
 router.route('/mark-as-seen')
     .put(isAuthenticated, markAllAsSeen);
+
+// DELETE /api/notifications/clear-all - Eliminar todas las notificaciones del usuario
+router.route('/clear-all')
+    .delete(isAuthenticated, clearAllNotifications);
 
 // PUT /api/notifications/:id/mark-as-read - Marcar una notificación específica como leída
 router.route('/:id/mark-as-read')

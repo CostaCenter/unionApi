@@ -19,6 +19,7 @@ const registrarMovimientosVersion = async (req, res) => {
       refDoc,
       cotizacionId,
       comprasCotizacionId, // OBLIGATORIO para version nueva
+      comprasCotizacionItemId,
       usuarioId
     } = req.body;
 
@@ -106,6 +107,7 @@ const registrarMovimientosVersion = async (req, res) => {
       ubicacionDestinoId,
       refDoc,
       comprasCotizacionId,
+      comprasCotizacionItemId: comprasCotizacionItemId || null,
       cotizacionId: cotizacionId || null,
       usuarioId: req.user ? req.user.id : usuarioId || null,
       ordenarPor: 'DESC' // Piezas grandes primero

@@ -73,6 +73,30 @@ const markAllAsSeen = async (req, res) => {
     }
 };
 
+// DELETE /api/notifications/clear-all - Eliminar todas las notificaciones del usuario
+const clearAllNotifications = async (req, res) => {
+    try {
+        const userId = req.user.user.id;
+
+        const deletedCount = await notification.destroy({
+            where: { userId },
+        });
+
+        res.status(200).json({
+            success: true,
+            deletedCount,
+            msg: `Se eliminaron ${deletedCount} notificaciones`,
+        });
+    } catch (error) {
+        console.error('Error al limpiar notificaciones:', error);
+        res.status(500).json({
+            success: false,
+            msg: 'Ha ocurrido un error al limpiar las notificaciones',
+            error: error.message,
+        });
+    }
+};
+
 // PUT /api/notifications/:id/mark-as-read - Marcar una notificación específica como leída
 const markAsRead = async (req, res) => {
     try {
@@ -194,6 +218,7 @@ const createNotificationDirect = async (notificationData) => {
 module.exports = {
     getNotifications,
     markAllAsSeen,
+    clearAllNotifications,
     markAsRead,
     createNotification,
     createNotificationDirect

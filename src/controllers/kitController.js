@@ -253,6 +253,117 @@ const searchKitsQuery = async(req, res) => {
         res.status(500).json({ message: "Error interno del servidor" });
     }
 }
+
+// Interpreta búsqueda por ID (#3722, id 3722, 3722) o por texto
+const parseCopyRecipeSearchInput = (input) => {
+    const rawQuery = String(input).trim().replace(/\s+/g, ' ');
+
+    const hashId = rawQuery.match(/^#\s*(\d+)$/);
+    if (hashId) {
+        return { mode: 'id', kitId: Number(hashId[1]), text: rawQuery };
+    }
+
+    const labeledId = rawQuery.match(/^(?:id|kit)\s*[#:]?\s*(\d+)$/i);
+    if (labeledId) {
+        return { mode: 'id', kitId: Number(labeledId[1]), text: rawQuery };
+    }
+
+    if (/^\d+$/.test(rawQuery)) {
+        return { mode: 'id', kitId: Number(rawQuery), text: rawQuery };
+    }
+
+    return { mode: 'text', text: rawQuery };
+};
+
+const escapeIlikeToken = (value) =>
+    String(value).replace(/[%_\\]/g, '\\$&');
+
+/** Cada palabra debe aparecer en name o description (tolera espacios/formato distinto en BD). */
+const buildCopyRecipeTextConditions = (text) => {
+    const tokens = text.trim().replace(/\s+/g, ' ').split(' ').filter(Boolean);
+    if (!tokens.length) return null;
+
+    return tokens.map((token) => ({
+        [Op.or]: [
+            { name: { [Op.iLike]: `%${escapeIlikeToken(token)}%` } },
+            { description: { [Op.iLike]: `%${escapeIlikeToken(token)}%` } },
+        ],
+    }));
+};
+
+// Búsqueda de kits para copiar receta (centro de kit / producción)
+const searchKitsForCopyRecipe = async (req, res) => {
+    try {
+        const { query, excludeKitId } = req.query;
+
+        if (!query || !String(query).trim()) {
+            return res.status(400).json({ message: 'Debes proporcionar un término de búsqueda.' });
+        }
+
+        const parsed = parseCopyRecipeSearchInput(query);
+        const excludeId = excludeKitId != null && excludeKitId !== ''
+            ? Number(excludeKitId)
+            : null;
+
+        const referenceStates = {
+            [Op.in]: ['completa', 'desarrollo'],
+        };
+
+        const isIdSearch = parsed.mode === 'id';
+
+        if (isIdSearch && excludeId && parsed.kitId === excludeId) {
+            return res.status(200).json([]);
+        }
+
+        const whereConditions = { state: referenceStates };
+
+        if (isIdSearch) {
+            whereConditions.id = parsed.kitId;
+        } else {
+            const tokenConditions = buildCopyRecipeTextConditions(parsed.text);
+            if (!tokenConditions) {
+                return res.status(400).json({ message: 'Debes proporcionar un término de búsqueda.' });
+            }
+            whereConditions[Op.and] = tokenConditions;
+        }
+
+        if (excludeId && !Number.isNaN(excludeId) && !isIdSearch) {
+            whereConditions.id = { [Op.ne]: excludeId };
+        }
+
+        const kits = await kit.findAll({
+            where: whereConditions,
+            attributes: { exclude: ['createdAt', 'updatedAt'] },
+            include: [
+                {
+                    model: extension,
+                    attributes: ['id', 'name'],
+                    required: false,
+                },
+                {
+                    model: linea,
+                    attributes: ['id', 'name'],
+                    required: false,
+                },
+                {
+                    model: itemKit,
+                    attributes: [],
+                    required: true,
+                },
+            ],
+            distinct: true,
+            subQuery: false,
+            limit: 50,
+            order: [['id', 'DESC']],
+        });
+
+        res.status(200).json(kits);
+    } catch (error) {
+        console.error('Error al buscar kits para copiar receta:', error);
+        res.status(500).json({ message: 'Error interno del servidor' });
+    }
+};
+
 // Obtener todos los kikts Terminados
 // Asegúrate de importar todos los modelos necesarios al inicio del archivo
 
@@ -2338,6 +2449,7 @@ const copyKitRecipe = async (req, res) => {
 
 module.exports = { 
     searchKitsQuery, // SearchKits With Query
+    searchKitsForCopyRecipe, // Búsqueda kits referencia (copiar receta)
     getKitsFiltradosProduccion, // Search Kits in productions query
     addKit, // Agregamos KIT.
     getProduccion, // Obtenemos todo
