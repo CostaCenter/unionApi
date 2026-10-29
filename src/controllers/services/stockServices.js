@@ -1,5 +1,9 @@
 const { stock, producto, materia, kit, db } = require('../../db/db');
 const { Op } = require('sequelize');
+const {
+  normalizarCantidadCompromisoMateriaPrima,
+  repartoCompromisoDesdeAsignaciones,
+} = require('./materiaUnidadCompromiso');
 
 const sequelize = db;
 
@@ -509,6 +513,24 @@ async function transferirItemConCompromisos({ comprasCotizacionItemId, usuarioId
     const movimientos = [];
     const compromisosActualizados = [];
 
+    const asignacionesCompromiso =
+      esMateriaPrima && itemData && (unidad === 'mt2' || unidad === 'mt')
+        ? repartoCompromisoDesdeAsignaciones(
+            asignaciones.map((a) => ({
+              requisicionId: a.requisicionId,
+              cantidad: parseFloat(a.cantidad || 0),
+            })),
+            itemData,
+            cantidadItem
+          )
+        : null;
+    const compromisoPorRequisicionId = new Map();
+    if (asignacionesCompromiso) {
+      for (const row of asignacionesCompromiso) {
+        compromisoPorRequisicionId.set(row.requisicionId, row.cantidadCompromiso);
+      }
+    }
+
     for (const asignacion of asignaciones) {
       const cantidadAsignada = parseFloat(asignacion.cantidad || 0);
       const requisicionId = asignacion.requisicionId;
@@ -605,7 +627,18 @@ async function transferirItemConCompromisos({ comprasCotizacionItemId, usuarioId
         if (compromiso) {
           const cantidadAnterior = parseFloat(compromiso.cantidadEntregada || 0);
           const cantidadComprometida = parseFloat(compromiso.cantidadComprometida || 0);
-          const nuevoTotal = cantidadAnterior + cantidadAsignada;
+          let agregarCompromiso = cantidadAsignada;
+          if (esMateriaPrima && itemData && (unidad === 'mt2' || unidad === 'mt')) {
+            if (compromisoPorRequisicionId.has(requisicionId)) {
+              agregarCompromiso = compromisoPorRequisicionId.get(requisicionId);
+            } else {
+              agregarCompromiso = normalizarCantidadCompromisoMateriaPrima(cantidadAsignada, itemData, {
+                cantidadPiezasOc: cantidadItem,
+                cantidadComprometida,
+              });
+            }
+          }
+          const nuevoTotal = cantidadAnterior + agregarCompromiso;
 
           // Calcular nuevo estado
           let nuevoEstado = 'reservado';
@@ -626,7 +659,7 @@ async function transferirItemConCompromisos({ comprasCotizacionItemId, usuarioId
             materiumId,
             medida,
             cantidadAnterior,
-            cantidadAgregada: cantidadAsignada,
+            cantidadAgregada: agregarCompromiso,
             nuevoTotal,
             estado: nuevoEstado
           });
@@ -634,7 +667,7 @@ async function transferirItemConCompromisos({ comprasCotizacionItemId, usuarioId
           compromisosActualizados.push({
             compromisoId: compromiso.id,
             cotizacionId,
-            cantidadAgregada: cantidadAsignada,
+            cantidadAgregada: agregarCompromiso,
             cantidadTotal: nuevoTotal,
             estado: nuevoEstado
           });

@@ -441,12 +441,12 @@ async function trasladarPiezasCompletasVersion({
       console.log(`[TRANSFERENCIA] Actualizando compromisos para ${itemCotizacion.itemToProjects.length} proyecto(s)`);
       
       // Calcular la cantidad total asignada a todos los proyectos
-      const cantidadTotalProyectos = itemCotizacion.itemToProjects.reduce(
-        (sum, itp) => sum + parseFloat(itp.cantidad || 0), 
+      const cantidadTotalProyectosRaw = itemCotizacion.itemToProjects.reduce(
+        (sum, itp) => sum + parseFloat(itp.cantidad || 0),
         0
       );
 
-      // Repartir la cantidad transferida proporcionalmente según la repartición original
+      // Repartir la cantidad transferida proporcionalmente (pesos desde itemToProject; montos en mt2/mt vía totalTransferido)
       for (const itp of itemCotizacion.itemToProjects) {
         if (!itp.requisicion || !itp.requisicion.cotizacionId) {
           console.warn(`[TRANSFERENCIA] ItemToProject ID ${itp.id} no tiene requisición o cotizacionId, se omite`);
@@ -457,9 +457,15 @@ async function trasladarPiezasCompletasVersion({
         if (cantidadProyecto <= 0) continue;
 
         // Calcular cantidad proporcional: (cantidad del proyecto / total) * cantidad transferida
-        const cantidadProporcional = cantidadTotalProyectos > 0
-          ? (cantidadProyecto / cantidadTotalProyectos) * totalTransferido
-          : totalTransferido / itemCotizacion.itemToProjects.length; // Si no hay total, dividir equitativamente
+        const pesoProyecto =
+          cantidadTotalProyectosRaw > 0
+            ? cantidadProyecto / cantidadTotalProyectosRaw
+            : 1 / itemCotizacion.itemToProjects.length;
+
+        const cantidadProporcional =
+          cantidadTotalProyectosRaw > 0
+            ? pesoProyecto * totalTransferido
+            : totalTransferido / itemCotizacion.itemToProjects.length;
 
         const proyectoCotizacionId = itp.requisicion.cotizacionId;
 

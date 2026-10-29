@@ -2576,6 +2576,13 @@ function estadoCompromisoDesdeCantidades(cantidadEntregada, cantidadComprometida
   return 'parcial';
 }
 
+/** medida en BD es VARCHAR; normalizar evita "varchar = numeric" en Postgres */
+function normalizeMedidaParaCompromiso(medida) {
+  if (medida == null || medida === '') return null;
+  const s = String(medida).trim();
+  return s === '' ? null : s;
+}
+
 function whereCompromisoUnico(cotizacionId, materiaId, productoId, medida) {
   const where = { cotizacionId };
   if (productoId) {
@@ -2598,7 +2605,7 @@ function whereCompromisoUnico(cotizacionId, materiaId, productoId, medida) {
 async function createCompromiso(materiaId, cantidadComprometida, cotizacionId, productoId, medida, t){
   const numero = cantidadComprometida;
   const tx = t ? { transaction: t } : {};
-  const medidaGuardar = medida == null || medida === '' ? null : medida;
+  const medidaGuardar = normalizeMedidaParaCompromiso(medida);
 
   const existente = await cotizacion_compromiso.findOne({
     where: whereCompromisoUnico(cotizacionId, materiaId, productoId, medidaGuardar),

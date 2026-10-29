@@ -331,11 +331,22 @@ const getItem = async (req, res) => {
 // Buscar por query bien
 const searchMateriaByQuery = async (req, res) => {
     try {
-        const { q } = req.query;
+        const { q, ubicacionId: ubicacionIdQuery, bodegaId: bodegaIdQuery } = req.query;
 
         // Validamos query
         if (!q) {
             return res.status(400).json({ msg: 'Debe enviar un parámetro de búsqueda' });
+        }
+
+        // Bodega del stock incluido (default 1 = materia prima; 3 = consumibles, etc.)
+        const ubicacionIdRaw = ubicacionIdQuery ?? bodegaIdQuery;
+        let ubicacionId = 1;
+        if (ubicacionIdRaw !== undefined && ubicacionIdRaw !== null && String(ubicacionIdRaw).trim() !== '') {
+            const parsed = Number(ubicacionIdRaw);
+            if (!Number.isFinite(parsed) || parsed <= 0) {
+                return res.status(400).json({ msg: 'ubicacionId no es válido' });
+            }
+            ubicacionId = parsed;
         }
 
         // Detectamos si es numérico (ID)
@@ -355,7 +366,7 @@ const searchMateriaByQuery = async (req, res) => {
             include:[{
                 model: stock    ,
                 where: {
-                    ubicacionId: 1
+                    ubicacionId
                 },
                 required: false
             }],

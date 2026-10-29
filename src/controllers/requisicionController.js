@@ -8,6 +8,7 @@ const { nuevaCompra, addItemToCotizacion, addServicioLibreToCotizacion, attachPr
 const dayjs = require('dayjs');
 const { render } = require('ejs');
 const { createCompromiso } = require('./services/inventarioServices');
+const { normalizarCantidadCompromisoMateriaPrima } = require('./services/materiaUnidadCompromiso');
 const { sendNotificationFromController, sendNotificationToMultipleUsersFromController } = require('./services/notificationServices');
 
 // Obtener todas las requisiciones
@@ -687,10 +688,23 @@ const updateItemCompra = async (req, res) => {
             }
         });
 
+        let entregaEnCompromiso = Number(cantidadEntrega);
+        if (materiaId && !productoId) {
+            const mat = await materia.findByPk(materiaId, { attributes: ['id', 'unidad', 'medida'] });
+            const compromisoRef = await cotizacion_compromiso.findOne({
+                where: {
+                    cotizacionId: searchRequisicion.cotizacionId,
+                    [Op.or]: [{ materiaId }, { materiumId: materiaId }],
+                },
+            });
+            entregaEnCompromiso = normalizarCantidadCompromisoMateriaPrima(cantidadEntrega, mat, {
+                cantidadComprometida: compromisoRef ? compromisoRef.cantidadComprometida : undefined,
+            });
+        }
 
         if(cantidadIgualar){
             const updateTooNecesidad = await cotizacion_compromiso.update({
-                cantidadEntregada: cantidadEntrega,
+                cantidadEntregada: entregaEnCompromiso,
             }, {
                 where: {
                     cotizacionId: searchRequisicion.cotizacionId,
@@ -704,7 +718,7 @@ const updateItemCompra = async (req, res) => {
 
         }else{
             const updateTooNecesidad = await cotizacion_compromiso.update({
-                cantidadEntregada: cantidadEntrega,
+                cantidadEntregada: entregaEnCompromiso,
             }, {
                 where: {
                     cotizacionId: searchRequisicion.cotizacionId,
